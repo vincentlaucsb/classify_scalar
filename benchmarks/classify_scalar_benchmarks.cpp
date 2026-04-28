@@ -111,7 +111,7 @@ template<typename T>
 inline long double pow10(T n) noexcept {
     long double multiplicand = n > 0 ? 10.0L : 0.1L;
     long double ret = 1.0L;
-    T iterations = n > 0 ? n : -n;
+    T iterations = n > 0 ? n : static_cast<T>(0 - n);
     for (T i = 0; i < iterations; ++i) {
         ret *= multiplicand;
     }
@@ -252,7 +252,7 @@ BenchKind classify_current(std::string_view value) {
     bool boolean = false;
     const auto kind = classify_scalar::classify_scalar(
         value,
-        classify_scalar::scalar_outputs{&number, &integer, &boolean});
+        classify_scalar::output_refs(number, integer, boolean));
 
     switch (kind) {
     case classify_scalar::scalar_null:

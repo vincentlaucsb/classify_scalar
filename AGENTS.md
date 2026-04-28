@@ -35,10 +35,10 @@ from csv-parser/csvzall scalar inference work.
   strings.
 - Boundary trimming is enabled by default. Internal parser helpers should receive
   the trimmed pointer span.
-- Keep the common numeric path cheap. Output pointers are optional; unprovided
-  pointers mean classify without storing values. If a caller requests any output
-  storage, require all value pointers up front and return `scalar_invalid` for
-  partial storage.
+- Keep the common numeric path cheap. Classification without storage should use
+  the default no-op output policy. Built-in storage should use
+  `output_refs(number, integer, boolean)`, and future custom policies may define
+  their own output objects with matching hooks.
 - Return integer kind ids. The built-in enum names reserve the default ids, and
   future custom policies should use ids starting at the documented custom range.
 - Optimize for the common path while preserving custom type extensibility.
@@ -48,9 +48,9 @@ from csv-parser/csvzall scalar inference work.
 - Prefer a switch-driven scan loop over accumulating scattered per-character
   `if` statements.
 - Put look-ahead and look-behind decisions in small policy handlers that receive
-  raw pointer context (`begin`, `end`, `current`) so future custom recognizers
-  can inspect local byte spans without changing the core scanner. Do not
-  allocate a context object per scanned byte.
+  a shared parse-state reference with raw pointer context (`first`, `last`,
+  `current`) so future custom recognizers can inspect local byte spans without
+  changing the core scanner. Do not allocate a context object per scanned byte.
 - Keep scalar-specific helper calls inside the relevant `ParseFlag` policy
   handler when possible, including boolean recognizers (`t/T` and `f/F`) as
   well as numeric markers. Avoid a separate discovery pass followed by a second
@@ -58,8 +58,10 @@ from csv-parser/csvzall scalar inference work.
 - Prefer compile-time-aware parse policy types over defensive runtime checks in
   the switch. The built-in policy owns `RecognizeBool`/`RecognizeHex` and each
   interesting `ParseFlag` has an explicit handler.
-- Keep the parse table policy-aware. If bool or hex recognition is disabled at
-  compile time, the table should not map bytes to those `ParseFlag` values.
+- Keep the parse table policy-aware for table-driven flags. Bool starter bytes
+  and numeric signs are handled before the numeric switch because they are only
+  significant at the first byte. If hex recognition is disabled at compile time,
+  the table should not map bytes to hex `ParseFlag` values.
 - Keep public wrappers responsible for pointer validation, output validation,
   and optional trimming. The internal trimmed classifier handles the empty
   trimmed-span/null decision before calling the hot numeric switch.

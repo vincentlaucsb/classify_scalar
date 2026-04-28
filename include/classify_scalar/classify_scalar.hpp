@@ -103,36 +103,52 @@ struct scalar_span {
     const char* last;
 };
 
-struct scalar_outputs {
-    scalar_outputs(
-        long double* number_ = nullptr,
-        std::int64_t* integer_ = nullptr,
-        bool* boolean_ = nullptr) noexcept
-        : number(number_), integer(integer_), boolean(boolean_) {}
-
-    long double* number;
-    std::int64_t* integer;
-    bool* boolean;
-
-    bool stores_values() const noexcept {
-        return number || integer || boolean;
-    }
-
-    bool valid() const noexcept {
-        return !stores_values() || (number && integer && boolean);
-    }
+struct classify_only_output {
+    void set_integer(std::int64_t) const noexcept {}
+    void set_number(long double) const noexcept {}
+    void set_bool(bool) const noexcept {}
 };
 
+struct builtin_output_refs {
+    builtin_output_refs(long double& number_, std::int64_t& integer_, bool& boolean_) noexcept
+        : number(number_), integer(integer_), boolean(boolean_) {}
+
+    void set_integer(std::int64_t value) const noexcept {
+        integer = value;
+        number = static_cast<long double>(value);
+    }
+
+    void set_number(long double value) const noexcept {
+        number = value;
+    }
+
+    void set_bool(bool value) const noexcept {
+        boolean = value;
+    }
+
+    long double& number;
+    std::int64_t& integer;
+    bool& boolean;
+};
+
+inline builtin_output_refs output_refs(long double& number, std::int64_t& integer, bool& boolean) noexcept {
+    return builtin_output_refs(number, integer, boolean);
+}
+
 enum class ParseFlag : unsigned char {
+    /// Any byte with no scalar-classification meaning in the active parse table.
     other,
+    /// ASCII whitespace bytes: space, tab, LF, CR, FF, and VT.
     space,
+    /// ASCII decimal digits '0' through '9'.
     digit,
-    sign,
+    /// Decimal point byte '.'.
     decimal,
+    /// Exponent marker bytes 'e' and 'E'.
     might_be_exponential,
+    /// Hexadecimal prefix marker bytes 'x' and 'X' when hex recognition is enabled.
     might_be_hex_prefix,
-    might_be_true,
-    might_be_false,
+    /// Hexadecimal digit bytes 'a' through 'f' and 'A' through 'F' when hex recognition is enabled.
     hex_digit
 };
 
@@ -149,15 +165,12 @@ inline bool is_ascii_space(const char c) noexcept {
     return table[static_cast<unsigned char>(c)];
 }
 
-template<bool RecognizeBool, bool RecognizeHex>
+template<bool RecognizeHex>
 CLASSIFY_SCALAR_CONST CONSTEXPR_14 ParseFlag classify_ascii_char(const unsigned char c) noexcept {
     return c >= '0' && c <= '9' ? ParseFlag::digit
-        : c == '+' || c == '-' ? ParseFlag::sign
         : c == '.' ? ParseFlag::decimal
         : c == 'e' || c == 'E' ? ParseFlag::might_be_exponential
         : RecognizeHex && (c == 'x' || c == 'X') ? ParseFlag::might_be_hex_prefix
-        : RecognizeBool && (c == 't' || c == 'T') ? ParseFlag::might_be_true
-        : RecognizeBool && (c == 'f' || c == 'F') ? ParseFlag::might_be_false
         : RecognizeHex && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) ? ParseFlag::hex_digit
         : c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v' ? ParseFlag::space
         : ParseFlag::other;
@@ -187,15 +200,36 @@ struct parse_table_type {
     }
 };
 
-template<bool RecognizeBool, bool RecognizeHex, std::size_t... Indexes>
+struct parse_state {
+    parse_state(const char* first_, const char* last_) noexcept
+        : first(first_),
+          last(last_),
+          current(first_),
+          numeric_first(first_),
+          sign(nullptr),
+          leading_sign(false),
+          leading_plus(false),
+          negative(false) {}
+
+    const char* first;
+    const char* last;
+    const char* current;
+    const char* numeric_first;
+    const char* sign;
+    bool leading_sign;
+    bool leading_plus;
+    bool negative;
+};
+
+template<bool RecognizeHex, std::size_t... Indexes>
 CONSTEXPR_14 parse_table_type build_parse_table(index_sequence<Indexes...>) noexcept {
-    return parse_table_type{{classify_ascii_char<RecognizeBool, RecognizeHex>(static_cast<unsigned char>(Indexes))...}};
+    return parse_table_type{{classify_ascii_char<RecognizeHex>(static_cast<unsigned char>(Indexes))...}};
 }
 
-template<bool RecognizeBool, bool RecognizeHex>
+template<bool RecognizeHex>
 inline const parse_table_type& parse_table() noexcept {
     static CONSTEXPR_VALUE_14 parse_table_type table =
-        build_parse_table<RecognizeBool, RecognizeHex>(typename make_index_sequence<256>::type());
+        build_parse_table<RecognizeHex>(typename make_index_sequence<256>::type());
     return table;
 }
 
@@ -235,9 +269,9 @@ inline bool iequals(const char* first, const char* last, const char* expected) n
     return true;
 }
 
-inline bool parse_true(const char* first, const char* last, bool* out, bool store_values) noexcept {
+inline bool parse_true(const char* first, const char* last, bool* out) noexcept {
     if (iequals(first, last, "true")) {
-        if (store_values) {
+        if (out) {
             *out = true;
         }
         return true;
@@ -246,9 +280,9 @@ inline bool parse_true(const char* first, const char* last, bool* out, bool stor
     return false;
 }
 
-inline bool parse_false(const char* first, const char* last, bool* out, bool store_values) noexcept {
+inline bool parse_false(const char* first, const char* last, bool* out) noexcept {
     if (iequals(first, last, "false")) {
-        if (store_values) {
+        if (out) {
             *out = false;
         }
         return true;
@@ -294,16 +328,13 @@ inline bool fits_signed_accumulate(
 
 #if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
 inline bool parse_decimal_integer_from_chars(
-    const char* first,
-    const char* last,
-    std::int64_t* out,
-    bool store_values) noexcept {
+    const parse_state& state,
+    std::int64_t* out) noexcept {
+    const char* first = state.numeric_first;
+    const char* last = state.last;
     std::int64_t parsed = 0;
-    if (first != last && *first == '+') {
-        ++first;
-        if (first == last) {
-            return false;
-        }
+    if (first == last) {
+        return false;
     }
 
     const std::from_chars_result result = std::from_chars(first, last, parsed, 10);
@@ -311,26 +342,19 @@ inline bool parse_decimal_integer_from_chars(
         return false;
     }
 
-    if (store_values) {
+    if (out) {
         *out = parsed;
     }
     return true;
 }
 
 inline bool parse_hex_integer_from_chars(
-    const char* first,
-    const char* last,
-    std::int64_t* out,
-    bool store_values) noexcept {
-    if (first == last) {
+    const parse_state& state,
+    std::int64_t* out) noexcept {
+    const char* current = state.leading_sign ? state.first + 1 : state.first;
+    const char* last = state.last;
+    if (current == last) {
         return false;
-    }
-
-    const char* current = first;
-    bool negative = false;
-    if (*current == '+' || *current == '-') {
-        negative = *current == '-';
-        ++current;
     }
 
     if (current + 2 > last || current[0] != '0' || (current[1] != 'x' && current[1] != 'X')) {
@@ -348,13 +372,13 @@ inline bool parse_hex_integer_from_chars(
         return false;
     }
 
-    const std::uint64_t limit = negative ? int64_negative_limit : int64_positive_limit;
+    const std::uint64_t limit = state.negative ? int64_negative_limit : int64_positive_limit;
     if (magnitude > limit) {
         return false;
     }
 
-    if (store_values) {
-        if (negative) {
+    if (out) {
+        if (state.negative) {
             *out = magnitude == limit
                 ? int64_min_value
                 : -static_cast<std::int64_t>(magnitude);
@@ -368,28 +392,18 @@ inline bool parse_hex_integer_from_chars(
 #endif
 
 inline bool parse_decimal_integer(
-    const char* first,
-    const char* last,
-    std::int64_t* out,
-    bool store_values) noexcept {
+    const parse_state& state,
+    std::int64_t* out) noexcept {
 #if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
-    return parse_decimal_integer_from_chars(first, last, out, store_values);
+    return parse_decimal_integer_from_chars(state, out);
 #else
+    const char* first = state.leading_sign ? state.first + 1 : state.first;
+    const char* last = state.last;
     if (first == last) {
         return false;
     }
 
-    bool negative = false;
-    if (*first == '+' || *first == '-') {
-        negative = *first == '-';
-        ++first;
-    }
-
-    if (first == last) {
-        return false;
-    }
-
-    const std::uint64_t limit = negative ? int64_negative_limit : int64_positive_limit;
+    const std::uint64_t limit = state.negative ? int64_negative_limit : int64_positive_limit;
 
     std::uint64_t acc = 0;
     for (const char* current = first; current != last; ++current) {
@@ -403,11 +417,11 @@ inline bool parse_decimal_integer(
         }
     }
 
-    if (!store_values) {
+    if (!out) {
         return true;
     }
 
-    if (negative) {
+    if (state.negative) {
         if (acc == limit) {
             *out = int64_min_value;
         } else {
@@ -422,22 +436,15 @@ inline bool parse_decimal_integer(
 }
 
 inline bool parse_hex_integer(
-    const char* first,
-    const char* last,
-    std::int64_t* out,
-    bool store_values) noexcept {
+    const parse_state& state,
+    std::int64_t* out) noexcept {
 #if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
-    return parse_hex_integer_from_chars(first, last, out, store_values);
+    return parse_hex_integer_from_chars(state, out);
 #else
-    if (first == last) {
+    const char* current = state.leading_sign ? state.first + 1 : state.first;
+    const char* last = state.last;
+    if (current == last) {
         return false;
-    }
-
-    const char* current = first;
-    bool negative = false;
-    if (*current == '+' || *current == '-') {
-        negative = *current == '-';
-        ++current;
     }
 
     if (current + 2 > last || current[0] != '0' || (current[1] != 'x' && current[1] != 'X')) {
@@ -449,7 +456,7 @@ inline bool parse_hex_integer(
         return false;
     }
 
-    const std::uint64_t limit = negative ? int64_negative_limit : int64_positive_limit;
+    const std::uint64_t limit = state.negative ? int64_negative_limit : int64_positive_limit;
 
     std::uint64_t acc = 0;
     for (; current != last; ++current) {
@@ -464,11 +471,11 @@ inline bool parse_hex_integer(
         acc = (acc * 16U) + static_cast<unsigned>(digit);
     }
 
-    if (!store_values) {
+    if (!out) {
         return true;
     }
 
-    if (negative) {
+    if (state.negative) {
         if (acc == limit) {
             *out = int64_min_value;
         } else {
@@ -483,10 +490,10 @@ inline bool parse_hex_integer(
 }
 
 inline bool parse_floating(
-    const char* first,
-    const char* last,
-    double* out,
-    bool store_values) noexcept {
+    const parse_state& state,
+    double* out) noexcept {
+    const char* first = state.numeric_first;
+    const char* last = state.last;
     const std::size_t size = static_cast<std::size_t>(last - first);
     if (first == last || size > 4096) {
         return false;
@@ -494,19 +501,12 @@ inline bool parse_floating(
 
 #if CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
     double parsed = 0;
-    if (first != last && *first == '+') {
-        ++first;
-        if (first == last) {
-            return false;
-        }
-    }
-
     const std::from_chars_result result = std::from_chars(first, last, parsed);
     if (result.ec != std::errc() || result.ptr != last || !std::isfinite(parsed)) {
         return false;
     }
 
-    if (store_values) {
+    if (out) {
         *out = parsed;
     }
 
@@ -530,7 +530,7 @@ inline bool parse_floating(
         return false;
     }
 
-    if (store_values) {
+    if (out) {
         *out = static_cast<double>(parsed);
     }
 
@@ -538,7 +538,7 @@ inline bool parse_floating(
 #endif
 }
 
-inline bool floating_is_integral(const double value, std::int64_t* out, bool store_values) noexcept {
+inline bool floating_is_integral(const double value, std::int64_t* out) noexcept {
     if (value < int64_min_long_double || value > int64_max_long_double) {
         return false;
     }
@@ -548,7 +548,7 @@ inline bool floating_is_integral(const double value, std::int64_t* out, bool sto
         return false;
     }
 
-    if (store_values) {
+    if (out) {
         *out = integer;
     }
 
@@ -556,171 +556,194 @@ inline bool floating_is_integral(const double value, std::int64_t* out, bool sto
 }
 
 inline ScalarKind finish_integer(
+    const std::int64_t,
+    classify_only_output&) noexcept {
+    return scalar_int;
+}
+
+template<typename Output>
+inline ScalarKind finish_integer(
     const std::int64_t parsed_integer,
-    scalar_outputs outputs,
-    bool store_values) noexcept {
-    if (store_values) {
-        *outputs.integer = parsed_integer;
-        *outputs.number = static_cast<long double>(parsed_integer);
-    }
+    Output& output) noexcept {
+    output.set_integer(parsed_integer);
     return scalar_int;
 }
 
 inline ScalarKind finish_floating(
     const double parsed_float,
-    scalar_outputs outputs,
-    bool store_values) noexcept {
-    std::int64_t parsed_integer = 0;
-    if (floating_is_integral(parsed_float, &parsed_integer, store_values)) {
-        return finish_integer(parsed_integer, outputs, store_values);
+    classify_only_output&) noexcept {
+    if (floating_is_integral(parsed_float, nullptr)) {
+        return scalar_int;
     }
 
-    if (store_values) {
-        *outputs.number = parsed_float;
+    return scalar_float;
+}
+
+template<typename Output>
+inline ScalarKind finish_floating(
+    const double parsed_float,
+    Output& output) noexcept {
+    std::int64_t parsed_integer = 0;
+    if (floating_is_integral(parsed_float, &parsed_integer)) {
+        return finish_integer(parsed_integer, output);
     }
+
+    output.set_number(parsed_float);
     return scalar_float;
 }
 
 template<bool RecognizeBool = true, bool RecognizeHex = true>
 struct builtin_parse_policy {
+    template<typename Output>
     ScalarKind on_decimal(
-        const char* first,
-        const char* last,
-        const char*,
-        scalar_outputs outputs,
-        bool store_values) const noexcept {
+        parse_state& state,
+        Output& output) const noexcept {
         double parsed_float = 0;
-        return parse_floating(first, last, &parsed_float, store_values)
-            ? finish_floating(parsed_float, outputs, store_values)
+        return parse_floating(state, &parsed_float)
+            ? finish_floating(parsed_float, output)
             : scalar_string;
     }
 
+    template<typename Output>
     ScalarKind on_exponent(
-        const char* first,
-        const char* last,
-        const char* current,
-        scalar_outputs outputs,
-        bool store_values) const noexcept {
-        if (current == first || current + 1 == last) {
+        parse_state& state,
+        Output& output) const noexcept {
+        if (state.current == state.first || state.current + 1 == state.last) {
             return scalar_string;
         }
 
         double parsed_float = 0;
-        return parse_floating(first, last, &parsed_float, store_values)
-            ? finish_floating(parsed_float, outputs, store_values)
+        return parse_floating(state, &parsed_float)
+            ? finish_floating(parsed_float, output)
             : scalar_string;
     }
 
+    template<typename Output>
     ScalarKind on_hex_prefix(
-        const char* first,
-        const char* last,
-        const char* current,
-        scalar_outputs outputs,
-        bool store_values) const noexcept {
-        if (current == first || current + 1 == last) {
+        parse_state& state,
+        Output& output) const noexcept {
+        if (state.current == state.first || state.current + 1 == state.last) {
             return scalar_string;
         }
 
         std::int64_t parsed_integer = 0;
-        return parse_hex_integer(first, last, &parsed_integer, store_values)
-            ? finish_integer(parsed_integer, outputs, store_values)
+        return parse_hex_integer(state, &parsed_integer)
+            ? finish_integer(parsed_integer, output)
             : scalar_string;
     }
 
+    template<typename Output>
     ScalarKind on_true(
-        const char* first,
-        const char* last,
-        const char* current,
-        scalar_outputs outputs,
-        bool store_values) const noexcept {
-        if (current != first) {
+        parse_state& state,
+        Output& output) const noexcept {
+        if (state.current != state.first) {
             return scalar_string;
         }
 
-        return parse_true(first, last, outputs.boolean, store_values)
-            ? scalar_bool
-            : scalar_string;
+        bool parsed = false;
+        if (!parse_true(state.first, state.last, &parsed)) {
+            return scalar_string;
+        }
+        output.set_bool(parsed);
+        return scalar_bool;
     }
 
+    template<typename Output>
     ScalarKind on_false(
-        const char* first,
-        const char* last,
-        const char* current,
-        scalar_outputs outputs,
-        bool store_values) const noexcept {
-        if (current != first) {
+        parse_state& state,
+        Output& output) const noexcept {
+        if (state.current != state.first) {
             return scalar_string;
         }
 
-        return parse_false(first, last, outputs.boolean, store_values)
-            ? scalar_bool
-            : scalar_string;
+        bool parsed = false;
+        if (!parse_false(state.first, state.last, &parsed)) {
+            return scalar_string;
+        }
+        output.set_bool(parsed);
+        return scalar_bool;
     }
 
+    template<typename Output>
     ScalarKind on_custom(
         ParseFlag,
-        const char*,
-        const char*,
-        const char*,
-        scalar_outputs,
-        bool) const noexcept {
+        parse_state&,
+        Output&) const noexcept {
         return scalar_string;
     }
 
+    template<typename Output>
     ScalarKind on_space(
-        const char*,
-        const char*,
-        const char*,
-        scalar_outputs,
-        bool) const noexcept {
+        parse_state&,
+        Output&) const noexcept {
         return scalar_string;
     }
 
+    template<typename Output>
     ScalarKind on_end(
-        const char* first,
-        const char* last,
-        scalar_outputs outputs,
-        bool store_values) const noexcept {
+        parse_state& state,
+        Output& output) const noexcept {
         std::int64_t parsed_integer = 0;
-        return parse_decimal_integer(first, last, &parsed_integer, store_values)
-            ? finish_integer(parsed_integer, outputs, store_values)
+        return parse_decimal_integer(state, &parsed_integer)
+            ? finish_integer(parsed_integer, output)
             : scalar_string;
     }
 };
 
-template<bool RecognizeBool, bool RecognizeHex, typename Policy>
+template<bool RecognizeBool, bool RecognizeHex, typename Output, typename Policy>
 inline ScalarKind classify_numeric_switch(
     const char* first,
     const char* last,
-    scalar_outputs outputs,
-    bool store_values,
+    Output& output,
     const Policy& policy) noexcept {
-    for (const char* current = first; current != last; ++current) {
-        const ParseFlag flag = parse_table<RecognizeBool, RecognizeHex>()[static_cast<unsigned char>(*current)];
+    parse_state state(first, last);
 
-        switch (flag) {
-        case ParseFlag::digit:
-        case ParseFlag::sign:
+    if (*first == '+' || *first == '-') {
+        state.sign = first;
+        state.leading_sign = true;
+        state.leading_plus = *first == '+';
+        state.numeric_first = state.leading_plus ? first + 1 : first;
+        state.negative = *first == '-';
+    }
+
+    IF_CONSTEXPR (RecognizeBool) {
+        state.current = first;
+        switch (*first) {
+        case 't':
+        case 'T':
+            return policy.on_true(state, output);
+        case 'f':
+        case 'F':
+            return policy.on_false(state, output);
+        default:
             break;
-        case ParseFlag::decimal:
-            return policy.on_decimal(first, last, current, outputs, store_values);
-        case ParseFlag::might_be_exponential:
-            return policy.on_exponent(first, last, current, outputs, store_values);
-        case ParseFlag::might_be_hex_prefix:
-            return policy.on_hex_prefix(first, last, current, outputs, store_values);
-        case ParseFlag::might_be_true:
-            return policy.on_true(first, last, current, outputs, store_values);
-        case ParseFlag::might_be_false:
-            return policy.on_false(first, last, current, outputs, store_values);
-        case ParseFlag::hex_digit:
-        case ParseFlag::other:
-            return policy.on_custom(flag, first, last, current, outputs, store_values);
-        case ParseFlag::space:
-            return policy.on_space(first, last, current, outputs, store_values);
         }
     }
 
-    return policy.on_end(first, last, outputs, store_values);
+    const char* scan_first = state.leading_sign ? first + 1 : first;
+    for (const char* current = scan_first; current != last; ++current) {
+        state.current = current;
+        const ParseFlag flag = parse_table<RecognizeHex>()[static_cast<unsigned char>(*current)];
+
+        switch (flag) {
+        case ParseFlag::digit:
+            break;
+        case ParseFlag::decimal:
+            return policy.on_decimal(state, output);
+        case ParseFlag::might_be_exponential:
+            return policy.on_exponent(state, output);
+        case ParseFlag::might_be_hex_prefix:
+            return policy.on_hex_prefix(state, output);
+        case ParseFlag::hex_digit:
+        case ParseFlag::other:
+            return policy.on_custom(flag, state, output);
+        case ParseFlag::space:
+            return policy.on_space(state, output);
+        }
+    }
+
+    state.current = last;
+    return policy.on_end(state, output);
 }
 
 } // namespace detail
@@ -730,12 +753,12 @@ namespace detail {
 template<
     bool RecognizeBool,
     bool RecognizeHex,
+    typename Output,
     typename Policy>
 inline ScalarKind classify_scalar_trimmed(
     const char* first,
     const char* last,
-    scalar_outputs outputs,
-    bool store_values,
+    Output& output,
     const Policy& policy) noexcept {
     if (first == last) {
         return scalar_null;
@@ -744,8 +767,7 @@ inline ScalarKind classify_scalar_trimmed(
     return classify_numeric_switch<RecognizeBool, RecognizeHex>(
         first,
         last,
-        outputs,
-        store_values,
+        output,
         policy);
 }
 
@@ -755,17 +777,13 @@ template<
     bool TrimAsciiWhitespace = true,
     bool RecognizeBool = true,
     bool RecognizeHex = true,
+    typename Output = classify_only_output,
     typename Policy = detail::builtin_parse_policy<RecognizeBool, RecognizeHex> >
 inline ScalarKind classify_scalar(
     const char* first,
     const char* last,
-    scalar_outputs outputs = scalar_outputs(),
+    Output output = Output(),
     Policy policy = Policy()) noexcept {
-    const bool store_values = outputs.stores_values();
-    if (!outputs.valid()) {
-        return scalar_invalid;
-    }
-
     if (!first || !last || last < first) {
         return scalar_string;
     }
@@ -777,16 +795,15 @@ inline ScalarKind classify_scalar(
     return detail::classify_scalar_trimmed<RecognizeBool, RecognizeHex>(
         span.first,
         span.last,
-        outputs,
-        store_values,
+        output,
         policy);
 }
 
 inline ScalarKind classify_scalar(
     const char* first,
     const char* last,
-    scalar_outputs outputs = scalar_outputs()) noexcept {
-    return classify_scalar<true, true, true>(first, last, outputs, detail::builtin_parse_policy<true, true>());
+    classify_only_output output = classify_only_output()) noexcept {
+    return classify_scalar<true, true, true>(first, last, output, detail::builtin_parse_policy<true, true>());
 }
 
 template<
@@ -794,15 +811,16 @@ template<
     bool RecognizeBool = true,
     bool RecognizeHex = true,
     std::size_t Size,
+    typename Output = classify_only_output,
     typename Policy = detail::builtin_parse_policy<RecognizeBool, RecognizeHex> >
 inline ScalarKind classify_scalar(
     const char (&value)[Size],
-    scalar_outputs outputs = scalar_outputs(),
+    Output output = Output(),
     Policy policy = Policy()) noexcept {
     return classify_scalar<TrimAsciiWhitespace, RecognizeBool, RecognizeHex>(
         value,
         value + Size - 1,
-        outputs,
+        output,
         policy);
 }
 
@@ -811,14 +829,12 @@ template<
     bool TrimAsciiWhitespace = true,
     bool RecognizeBool = true,
     bool RecognizeHex = true,
+    typename Output = classify_only_output,
     typename Policy = detail::builtin_parse_policy<RecognizeBool, RecognizeHex> >
 inline ScalarKind classify_scalar(
     std::string_view value,
-    scalar_outputs outputs = scalar_outputs(),
+    Output output = Output(),
     Policy policy = Policy()) noexcept {
-    if (!outputs.valid()) {
-        return scalar_invalid;
-    }
     if (value.empty()) {
         return scalar_null;
     }
@@ -826,14 +842,14 @@ inline ScalarKind classify_scalar(
     return classify_scalar<TrimAsciiWhitespace, RecognizeBool, RecognizeHex>(
         value.data(),
         value.data() + value.size(),
-        outputs,
+        output,
         policy);
 }
 
 inline ScalarKind classify_scalar(
     std::string_view value,
-    scalar_outputs outputs = scalar_outputs()) noexcept {
-    return classify_scalar<true, true, true>(value, outputs, detail::builtin_parse_policy<true, true>());
+    classify_only_output output = classify_only_output()) noexcept {
+    return classify_scalar<true, true, true>(value, output, detail::builtin_parse_policy<true, true>());
 }
 
 #endif

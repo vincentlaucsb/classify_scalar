@@ -7,7 +7,7 @@ int main() {
     long double number = 0;
     bool boolean = false;
 
-    classify_scalar::scalar_outputs outputs(&number, &integer, &boolean);
+    classify_scalar::builtin_output_refs outputs = classify_scalar::output_refs(number, integer, boolean);
 
     if (classify_scalar::classify_scalar("42", outputs) != classify_scalar::scalar_int) {
         return 1;

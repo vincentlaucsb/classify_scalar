@@ -14,7 +14,13 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
     endif()
 
     add_executable(classify_scalar_tests
-        test_classify_scalar.cpp)
+        test_bool.cpp
+        test_classify_scalar.cpp
+        test_decimal_int.cpp
+        test_float.cpp
+        test_hex.cpp
+        test_null_string_trim.cpp
+        test_outputs.cpp)
 
     target_link_libraries(classify_scalar_tests
         PRIVATE

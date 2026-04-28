@@ -7,25 +7,27 @@ High-performance header-only scalar classification for C++11 and newer.
 
 std::int64_t integer = 0;
 long double number = 0;
+bool boolean = false;
 
 auto kind = classify_scalar::classify_scalar(
     "  -0x2a  ",
-    classify_scalar::scalar_outputs{&number, &integer});
+    classify_scalar::output_refs(number, integer, boolean));
 ```
 
 The initial API classifies strings, booleans, integers, floats, hexadecimal
 integers, and exponential notation. ASCII boundary whitespace is trimmed by
 default.
 
-`scalar_outputs{}` means classify only. If any output storage is requested, all
-value pointers (`number`, `integer`, and `boolean`) must be non-null or the
-classifier returns `scalar_invalid`.
+Calling `classify_scalar(...)` without an output policy means classify only.
+Use `output_refs(number, integer, boolean)` when you want the built-in parsed
+values stored. Future custom policies can provide their own output object with
+matching `set_*` hooks.
 
 The classifier uses a compile-time ASCII `ParseFlag` table and a switch-driven
 loop. Each interesting flag dispatches to a policy handler, and the built-in
 policy calls the specific parse helper for decimal, exponent, hex-prefix, true,
-and false cases. Custom policies receive raw pointer context (`begin`, `end`,
-`current`) for look-ahead and look-behind logic.
+and false cases. Custom policies receive a mutable parse state with raw pointer
+context (`first`, `last`, `current`) and scanner facts such as the first sign.
 
 When compiled as C++17 or newer, numeric conversion uses `std::from_chars`.
 C++11 builds use the bundled fallback parsers.

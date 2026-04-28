@@ -70,8 +70,14 @@
 #include <string_view>
 #include <system_error>
 #define CLASSIFY_SCALAR_HAS_STD_FROM_CHARS 1
+#if defined(_LIBCPP_VERSION)
+#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
+#else
+#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 1
+#endif
 #else
 #define CLASSIFY_SCALAR_HAS_STD_FROM_CHARS 0
+#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
 #endif
 
 namespace classify_scalar {
@@ -486,7 +492,7 @@ inline bool parse_floating(
         return false;
     }
 
-#if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
+#if CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
     double parsed = 0;
     if (first != last && *first == '+') {
         ++first;

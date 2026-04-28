@@ -1,12 +1,11 @@
 #pragma once
 
-#include <cctype>
+#include <cassert>
 #include <cerrno>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <limits>
 
 #if defined(_MSVC_LANG)
@@ -138,10 +137,6 @@ inline builtin_output_refs output_refs(long double& number, std::int64_t& intege
 enum class ParseFlag : unsigned char {
     /// Any byte with no scalar-classification meaning in the active parse table.
     other,
-    /// ASCII whitespace bytes: space, tab, LF, CR, FF, and VT.
-    space,
-    /// ASCII decimal digits '0' through '9'.
-    digit,
     /// Decimal point byte '.'.
     decimal,
     /// Exponent marker bytes 'e' and 'E'.
@@ -153,6 +148,15 @@ enum class ParseFlag : unsigned char {
 };
 
 namespace detail {
+
+enum class LeadingFlag : unsigned char {
+    other,
+    digit,
+    plus,
+    minus,
+    might_be_true,
+    might_be_false
+};
 
 inline bool is_ascii_space(const char c) noexcept {
     static CONSTEXPR_VALUE_14 bool table[256] = {
@@ -167,13 +171,25 @@ inline bool is_ascii_space(const char c) noexcept {
 
 template<bool RecognizeHex>
 CLASSIFY_SCALAR_CONST CONSTEXPR_14 ParseFlag classify_ascii_char(const unsigned char c) noexcept {
-    return c >= '0' && c <= '9' ? ParseFlag::digit
-        : c == '.' ? ParseFlag::decimal
+    return c == '.' ? ParseFlag::decimal
         : c == 'e' || c == 'E' ? ParseFlag::might_be_exponential
         : RecognizeHex && (c == 'x' || c == 'X') ? ParseFlag::might_be_hex_prefix
         : RecognizeHex && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) ? ParseFlag::hex_digit
-        : c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v' ? ParseFlag::space
         : ParseFlag::other;
+}
+
+template<bool RecognizeBool>
+CLASSIFY_SCALAR_CONST CONSTEXPR_14 LeadingFlag classify_leading_ascii_char(const unsigned char c) noexcept {
+    return c >= '0' && c <= '9' ? LeadingFlag::digit
+        : c == '+' ? LeadingFlag::plus
+        : c == '-' ? LeadingFlag::minus
+        : RecognizeBool && (c == 't' || c == 'T') ? LeadingFlag::might_be_true
+        : RecognizeBool && (c == 'f' || c == 'F') ? LeadingFlag::might_be_false
+        : LeadingFlag::other;
+}
+
+CLASSIFY_SCALAR_CONST CONSTEXPR_14 char ascii_lower_char(const unsigned char c) noexcept {
+    return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
 }
 
 template<std::size_t... Indexes>
@@ -200,24 +216,36 @@ struct parse_table_type {
     }
 };
 
+struct leading_table_type {
+    LeadingFlag values[256];
+
+    CONSTEXPR_14 LeadingFlag operator[](unsigned char value) const noexcept {
+        return values[value];
+    }
+};
+
+struct ascii_lower_table_type {
+    char values[256];
+
+    CONSTEXPR_14 char operator[](unsigned char value) const noexcept {
+        return values[value];
+    }
+};
+
 struct parse_state {
     parse_state(const char* first_, const char* last_) noexcept
         : first(first_),
           last(last_),
           current(first_),
           numeric_first(first_),
-          sign(nullptr),
           leading_sign(false),
-          leading_plus(false),
           negative(false) {}
 
     const char* first;
     const char* last;
     const char* current;
     const char* numeric_first;
-    const char* sign;
     bool leading_sign;
-    bool leading_plus;
     bool negative;
 };
 
@@ -233,6 +261,29 @@ inline const parse_table_type& parse_table() noexcept {
     return table;
 }
 
+template<bool RecognizeBool, std::size_t... Indexes>
+CONSTEXPR_14 leading_table_type build_leading_table(index_sequence<Indexes...>) noexcept {
+    return leading_table_type{{classify_leading_ascii_char<RecognizeBool>(static_cast<unsigned char>(Indexes))...}};
+}
+
+template<bool RecognizeBool>
+inline const leading_table_type& leading_table() noexcept {
+    static CONSTEXPR_VALUE_14 leading_table_type table =
+        build_leading_table<RecognizeBool>(typename make_index_sequence<256>::type());
+    return table;
+}
+
+template<std::size_t... Indexes>
+CONSTEXPR_14 ascii_lower_table_type build_ascii_lower_table(index_sequence<Indexes...>) noexcept {
+    return ascii_lower_table_type{{ascii_lower_char(static_cast<unsigned char>(Indexes))...}};
+}
+
+inline const ascii_lower_table_type& ascii_lower_table() noexcept {
+    static CONSTEXPR_VALUE_14 ascii_lower_table_type table =
+        build_ascii_lower_table(typename make_index_sequence<256>::type());
+    return table;
+}
+
 inline scalar_span trim_ascii(const char* first, const char* last) noexcept {
     while (first != last && is_ascii_space(*first)) {
         ++first;
@@ -245,50 +296,43 @@ inline scalar_span trim_ascii(const char* first, const char* last) noexcept {
     return scalar_span{first, last};
 }
 
-inline char ascii_lower(const char c) noexcept {
-    if (c >= 'A' && c <= 'Z') {
-        return static_cast<char>(c - 'A' + 'a');
-    }
-
-    return c;
-}
-
-inline bool iequals(const char* first, const char* last, const char* expected) noexcept {
-    const std::size_t size = static_cast<std::size_t>(last - first);
-    const std::size_t expected_size = std::strlen(expected);
-    if (size != expected_size) {
+inline bool parse_true(const char* first, const char* last, bool* out) noexcept {
+    if (last - first != 4) {
         return false;
     }
 
-    for (std::size_t i = 0; i < size; ++i) {
-        if (ascii_lower(first[i]) != expected[i]) {
-            return false;
-        }
+    const ascii_lower_table_type& table = ascii_lower_table();
+    if (table[static_cast<unsigned char>(first[0])] != 't'
+        || table[static_cast<unsigned char>(first[1])] != 'r'
+        || table[static_cast<unsigned char>(first[2])] != 'u'
+        || table[static_cast<unsigned char>(first[3])] != 'e') {
+        return false;
     }
 
+    if (out) {
+        *out = true;
+    }
     return true;
 }
 
-inline bool parse_true(const char* first, const char* last, bool* out) noexcept {
-    if (iequals(first, last, "true")) {
-        if (out) {
-            *out = true;
-        }
-        return true;
-    }
-
-    return false;
-}
-
 inline bool parse_false(const char* first, const char* last, bool* out) noexcept {
-    if (iequals(first, last, "false")) {
-        if (out) {
-            *out = false;
-        }
-        return true;
+    if (last - first != 5) {
+        return false;
     }
 
-    return false;
+    const ascii_lower_table_type& table = ascii_lower_table();
+    if (table[static_cast<unsigned char>(first[0])] != 'f'
+        || table[static_cast<unsigned char>(first[1])] != 'a'
+        || table[static_cast<unsigned char>(first[2])] != 'l'
+        || table[static_cast<unsigned char>(first[3])] != 's'
+        || table[static_cast<unsigned char>(first[4])] != 'e') {
+        return false;
+    }
+
+    if (out) {
+        *out = false;
+    }
+    return true;
 }
 
 inline int digit_value(const char c) noexcept {
@@ -357,9 +401,10 @@ inline bool parse_hex_integer_from_chars(
         return false;
     }
 
-    if (current + 2 > last || current[0] != '0' || (current[1] != 'x' && current[1] != 'X')) {
+    if (current + 2 > last || current[0] != '0' || state.current != current + 1) {
         return false;
     }
+    assert(current[1] == 'x' || current[1] == 'X');
     current += 2;
 
     if (current == last) {
@@ -673,13 +718,6 @@ struct builtin_parse_policy {
     }
 
     template<typename Output>
-    ScalarKind on_space(
-        parse_state&,
-        Output&) const noexcept {
-        return scalar_string;
-    }
-
-    template<typename Output>
     ScalarKind on_end(
         parse_state& state,
         Output& output) const noexcept {
@@ -697,37 +735,50 @@ inline ScalarKind classify_numeric_switch(
     Output& output,
     const Policy& policy) noexcept {
     parse_state state(first, last);
+    const leading_table_type& leading_flags = leading_table<RecognizeBool>();
+    const char* scan_first = first + 1;
 
-    if (*first == '+' || *first == '-') {
-        state.sign = first;
+    switch (leading_flags[static_cast<unsigned char>(*first)]) {
+    case LeadingFlag::digit:
+        break;
+    case LeadingFlag::plus:
         state.leading_sign = true;
-        state.leading_plus = *first == '+';
-        state.numeric_first = state.leading_plus ? first + 1 : first;
-        state.negative = *first == '-';
-    }
-
-    IF_CONSTEXPR (RecognizeBool) {
         state.current = first;
-        switch (*first) {
-        case 't':
-        case 'T':
-            return policy.on_true(state, output);
-        case 'f':
-        case 'F':
-            return policy.on_false(state, output);
-        default:
-            break;
+        state.numeric_first = first + 1;
+        if (state.numeric_first == last || leading_flags[static_cast<unsigned char>(*state.numeric_first)] != LeadingFlag::digit) {
+            return scalar_string;
         }
+        scan_first = state.numeric_first + 1;
+        break;
+    case LeadingFlag::minus:
+        state.leading_sign = true;
+        state.current = first;
+        state.negative = true;
+        if (state.numeric_first + 1 == last || leading_flags[static_cast<unsigned char>(*(state.numeric_first + 1))] != LeadingFlag::digit) {
+            return scalar_string;
+        }
+        scan_first = state.numeric_first + 2;
+        break;
+    case LeadingFlag::might_be_true:
+        state.current = first;
+        return policy.on_true(state, output);
+    case LeadingFlag::might_be_false:
+        state.current = first;
+        return policy.on_false(state, output);
+    case LeadingFlag::other:
+        return scalar_string;
     }
 
-    const char* scan_first = state.leading_sign ? first + 1 : first;
     for (const char* current = scan_first; current != last; ++current) {
         state.current = current;
-        const ParseFlag flag = parse_table<RecognizeHex>()[static_cast<unsigned char>(*current)];
+        const unsigned char c = static_cast<unsigned char>(*current);
+        if (leading_flags[c] == LeadingFlag::digit) {
+            continue;
+        }
+
+        const ParseFlag flag = parse_table<RecognizeHex>()[c];
 
         switch (flag) {
-        case ParseFlag::digit:
-            break;
         case ParseFlag::decimal:
             return policy.on_decimal(state, output);
         case ParseFlag::might_be_exponential:
@@ -735,10 +786,10 @@ inline ScalarKind classify_numeric_switch(
         case ParseFlag::might_be_hex_prefix:
             return policy.on_hex_prefix(state, output);
         case ParseFlag::hex_digit:
-        case ParseFlag::other:
             return policy.on_custom(flag, state, output);
-        case ParseFlag::space:
-            return policy.on_space(state, output);
+        case ParseFlag::other:
+        default:
+            return scalar_string;
         }
     }
 

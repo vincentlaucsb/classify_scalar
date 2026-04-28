@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+
+# Local build trees
+out/
+.vs/

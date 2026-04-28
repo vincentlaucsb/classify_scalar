@@ -1,0 +1,52 @@
+name: CMake on multiple platforms
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / C++${{ matrix.cxx_standard }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        cxx_standard: [11, 17, 20]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache CMake dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/build-${{ matrix.cxx_standard }}/_deps
+          key: cmake-deps-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-deps-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
+            cmake-deps-${{ runner.os }}-
+
+      - name: Configure CMake
+        run: >
+          cmake
+          -S .
+          -B build-${{ matrix.cxx_standard }}
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          -DCLASSIFY_SCALAR_BUILD_TESTS=ON
+          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=${{ matrix.cxx_standard == 11 && 'OFF' || 'ON' }}
+          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=${{ matrix.cxx_standard }}
+
+      - name: Build
+        run: cmake --build build-${{ matrix.cxx_standard }} --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build-${{ matrix.cxx_standard }} --build-config ${{ env.BUILD_TYPE }} --output-on-failure

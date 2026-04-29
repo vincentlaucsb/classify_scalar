@@ -19,6 +19,21 @@ TEST_CASE("classifies decimal floats") {
 
     CHECK(classify_scalar::classify_scalar("+3.5", classify_scalar::output_refs(number, integer, boolean)) == scalar_float);
     CHECK(static_cast<double>(number) == Catch::Approx(3.5));
+
+    CHECK(classify_scalar::classify_scalar(".67", classify_scalar::output_refs(number, integer, boolean)) == scalar_float);
+    CHECK(static_cast<double>(number) == Catch::Approx(0.67));
+
+    CHECK(classify_scalar::classify_scalar("+.67", classify_scalar::output_refs(number, integer, boolean)) == scalar_float);
+    CHECK(static_cast<double>(number) == Catch::Approx(0.67));
+
+    CHECK(classify_scalar::classify_scalar("-.67", classify_scalar::output_refs(number, integer, boolean)) == scalar_float);
+    CHECK(static_cast<double>(number) == Catch::Approx(-0.67));
+}
+
+TEST_CASE("malformed decimal floats fall back to string") {
+    CHECK(classify_scalar::classify_scalar(".") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("+.") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("-.") == scalar_string);
 }
 
 TEST_CASE("classifies exponential notation") {

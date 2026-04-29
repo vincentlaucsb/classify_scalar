@@ -19,7 +19,8 @@ enum class BenchKind : int {
     string,
     boolean,
     integer,
-    floating
+    floating,
+    timestamp
 };
 
 struct bench_case {
@@ -45,6 +46,7 @@ const std::vector<bench_case>& mixed_cases() {
         {"3.14159"},
         {"-1.25e2"},
         {"1e-3"},
+        {"2024-01-31T23:59:58Z"},
         {"  12345  "},
         {"510 123 4567"},
         {"0xgg"},
@@ -91,6 +93,138 @@ inline bool iequals(std::string_view lhs, std::string_view rhs) noexcept {
         }
     }
     return true;
+}
+
+constexpr bool ascii_digit(char c) noexcept {
+    return c >= '0' && c <= '9';
+}
+
+template<std::size_t Count>
+inline bool parse_digits(const char* value, int& out) noexcept {
+    int parsed = 0;
+    for (std::size_t i = 0; i < Count; ++i) {
+        if (!ascii_digit(value[i])) {
+            return false;
+        }
+        parsed = (parsed * 10) + (value[i] - '0');
+    }
+    out = parsed;
+    return true;
+}
+
+constexpr bool leap_year(int year) noexcept {
+    return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+}
+
+constexpr int common_days_in_month[13] = {
+    0,
+    31, 28, 31, 30, 31, 30,
+    31, 31, 30, 31, 30, 31
+};
+
+inline int month_days(int year, int month) noexcept {
+    return month == 2 && leap_year(year)
+        ? 29
+        : common_days_in_month[month];
+}
+
+inline bool valid_date(int year, int month, int day) noexcept {
+    return month >= 1 && month <= 12 && day >= 1 && day <= month_days(year, month);
+}
+
+inline bool consume_timezone(const char*& current, const char* last) noexcept {
+    if (current == last) {
+        return true;
+    }
+    if (*current == 'z' || *current == 'Z') {
+        ++current;
+        return current == last;
+    }
+    if (*current != '+' && *current != '-') {
+        return false;
+    }
+    if (current + 6 != last || current[3] != ':') {
+        return false;
+    }
+
+    int hour = 0;
+    int minute = 0;
+    if (!parse_digits<2>(current + 1, hour) || !parse_digits<2>(current + 4, minute)) {
+        return false;
+    }
+
+    current = last;
+    return hour <= 23 && minute <= 59;
+}
+
+inline bool naive_iso_timestamp(std::string_view value) noexcept {
+    if (value.size() < 10) {
+        return false;
+    }
+    const char* first = value.data();
+    const char* last = first + value.size();
+    if (first[4] != '-' || first[7] != '-') {
+        return false;
+    }
+
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    if (!parse_digits<4>(first, year) || !parse_digits<2>(first + 5, month) || !parse_digits<2>(first + 8, day)) {
+        return false;
+    }
+    if (!valid_date(year, month, day)) {
+        return false;
+    }
+
+    const char* current = first + 10;
+    if (current == last) {
+        return true;
+    }
+    if (*current != 'T' && *current != 't') {
+        return false;
+    }
+
+    ++current;
+    if (current + 5 > last || current[2] != ':') {
+        return false;
+    }
+
+    int hour = 0;
+    int minute = 0;
+    if (!parse_digits<2>(current, hour) || !parse_digits<2>(current + 3, minute)) {
+        return false;
+    }
+    if (hour > 23 || minute > 59) {
+        return false;
+    }
+
+    current += 5;
+    if (current != last && *current == ':') {
+        ++current;
+        if (current + 2 > last) {
+            return false;
+        }
+
+        int second = 0;
+        if (!parse_digits<2>(current, second) || second > 59) {
+            return false;
+        }
+
+        current += 2;
+        if (current != last && *current == '.') {
+            ++current;
+            const char* fraction_first = current;
+            while (current != last && ascii_digit(*current)) {
+                ++current;
+            }
+            if (current == fraction_first) {
+                return false;
+            }
+        }
+    }
+
+    return consume_timezone(current, last);
 }
 
 namespace previous_data_type {
@@ -263,6 +397,8 @@ BenchKind classify_current(std::string_view value) {
         return BenchKind::integer;
     case classify_scalar::scalar_float:
         return BenchKind::floating;
+    case classify_scalar::scalar_timestamp:
+        return BenchKind::timestamp;
     case classify_scalar::scalar_string:
     default:
         return BenchKind::string;
@@ -276,6 +412,9 @@ BenchKind classify_naive_from_chars(std::string_view value) {
     }
     if (iequals(value, "true") || iequals(value, "false")) {
         return BenchKind::boolean;
+    }
+    if (naive_iso_timestamp(value)) {
+        return BenchKind::timestamp;
     }
 
     std::int64_t integer = 0;

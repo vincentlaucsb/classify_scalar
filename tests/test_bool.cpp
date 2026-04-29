@@ -20,5 +20,9 @@ TEST_CASE("classifies booleans case-insensitively") {
 }
 
 TEST_CASE("boolean recognition can be disabled at compile time") {
-    CHECK(classify_scalar::classify_scalar<true, false>("true") == scalar_string);
+    typedef classify_scalar::policy_pack<
+        classify_scalar::builtin_timestamp_policy,
+        classify_scalar::builtin_numeric_policy<true> > no_bool_pack;
+
+    CHECK(classify_scalar::classify_scalar("true", classify_scalar::classify_only_output(), no_bool_pack()) == scalar_string);
 }

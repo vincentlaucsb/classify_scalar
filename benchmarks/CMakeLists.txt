@@ -23,19 +23,28 @@ if(NOT benchmark_FOUND)
     FetchContent_MakeAvailable(benchmark)
 endif()
 
-add_executable(classify_scalar_benchmarks
-    classify_scalar_benchmarks.cpp)
+function(add_classify_scalar_benchmark target_name)
+    add_executable(${target_name}
+        classify_scalar_benchmarks.cpp)
 
-target_include_directories(classify_scalar_benchmarks
+    target_include_directories(${target_name}
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
+    target_link_libraries(${target_name}
+        PRIVATE
+            benchmark::benchmark_main)
+
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
+add_classify_scalar_benchmark(classify_scalar_benchmarks)
+
+add_classify_scalar_benchmark(classify_scalar_benchmarks_fallback)
+target_compile_definitions(classify_scalar_benchmarks_fallback
     PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../include")
-
-target_link_libraries(classify_scalar_benchmarks
-    PRIVATE
-        benchmark::benchmark_main)
-
-if(MSVC)
-    target_compile_options(classify_scalar_benchmarks PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(classify_scalar_benchmarks PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+        CLASSIFY_SCALAR_DISABLE_STD_FROM_CHARS)

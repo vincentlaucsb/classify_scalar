@@ -20,7 +20,9 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
         test_float.cpp
         test_hex.cpp
         test_null_string_trim.cpp
-        test_outputs.cpp)
+        test_outputs.cpp
+        test_policy_pack.cpp
+        test_timestamp.cpp)
 
     target_link_libraries(classify_scalar_tests
         PRIVATE

@@ -3,7 +3,8 @@ param(
     [string]$Config = "Release",
     [string]$Generator = "Ninja",
     [string]$VsDevCmd = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat",
-    [string[]]$BenchmarkArgs = @("--benchmark_min_time=0.2s")
+    [string]$MinTime = "0.5s",
+    [string[]]$BenchmarkArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,17 +25,32 @@ function Invoke-NativeBuildCommand {
 Invoke-NativeBuildCommand "cmake -S `"$sourceDir`" -B `"$BuildDir`" -G `"$Generator`" -DCMAKE_BUILD_TYPE=$Config"
 Invoke-NativeBuildCommand "cmake --build `"$BuildDir`" --config $Config"
 
-$exe = Join-Path $BuildDir "classify_scalar_benchmarks.exe"
-if (-not (Test-Path $exe)) {
-    $exe = Join-Path $BuildDir $Config "classify_scalar_benchmarks.exe"
-}
-if (-not (Test-Path $exe)) {
-    $exe = Join-Path $BuildDir "classify_scalar_benchmarks"
-}
-if (-not (Test-Path $exe)) {
-    throw "Could not find classify_scalar_benchmarks executable under $BuildDir"
+function Find-BenchmarkExe {
+    param([string]$Name)
+
+    $candidates = @(
+        (Join-Path $BuildDir "$Name.exe"),
+        (Join-Path $BuildDir $Config "$Name.exe"),
+        (Join-Path $BuildDir $Name),
+        (Join-Path $BuildDir $Config $Name)
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "Could not find $Name executable under $BuildDir"
 }
 
 Write-Host "Repository: $repoRoot"
-Write-Host "Running: $exe $BenchmarkArgs"
-& $exe @BenchmarkArgs
+$defaultArgs = @("--benchmark_min_time=$MinTime")
+$allArgs = $defaultArgs + $BenchmarkArgs
+
+foreach ($name in @("classify_scalar_benchmarks", "classify_scalar_benchmarks_fallback")) {
+    $exe = Find-BenchmarkExe $name
+    Write-Host ""
+    Write-Host "Running: $exe $allArgs"
+    & $exe @allArgs
+}

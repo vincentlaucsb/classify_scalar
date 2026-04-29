@@ -12,9 +12,10 @@ from csv-parser/csvzall scalar inference work.
   overloads or aliases when available, but the baseline must compile as C++11.
 - Prefer `std::from_chars` for built-in numeric conversion when compiling as
   C++17 or newer. Keep C++11 fallback parsers in the header for older callers.
-- Keep hot-path parser options compile-time first. `TrimAsciiWhitespace`,
-  `RecognizeBool`, and `RecognizeHex` should be template parameters on the
-  primary classifier so the compiler can erase unused branches. Avoid runtime
+- Keep hot-path parser options compile-time first. `TrimAsciiWhitespace` is the
+  public classifier template knob. Built-in recognizers should be selected by
+  composing policy packs, such as omitting `builtin_bool_policy` or using
+  `builtin_numeric_policy<false>` to disable hexadecimal parsing. Avoid runtime
   option-dispatch overloads unless a concrete downstream need justifies the
   compile-time cost.
 - Use the local compatibility macros copied from csv-parser (`IF_CONSTEXPR`,
@@ -42,26 +43,36 @@ from csv-parser/csvzall scalar inference work.
 - Return integer kind ids. The built-in enum names reserve the default ids, and
   future custom policies should use ids starting at the documented custom range.
 - Optimize for the common path while preserving custom type extensibility.
-- Use a compile-time ASCII parse table that maps characters to `ParseFlag`
-  dispatch hints such as digit, decimal marker, exponent marker, and hex-prefix
-  marker.
+- Use compile-time ASCII tables for parser-family dispatch. Built-in dispatch
+  maps leading bytes to numeric or bool policy families. Numeric internals own
+  digit, decimal marker, sign, exponent marker, and hex-prefix handling.
+- User extension should go through ordered policy packs. Each policy declares
+  `matches_leading(unsigned char)` and handles matching spans with
+  `on_dispatch(parse_state&, output&)`; earlier policies have higher priority.
+  If a policy returns `scalar_string`, dispatch falls through to the next policy
+  whose leading-byte matcher accepts the same input.
 - Prefer a switch-driven scan loop over accumulating scattered per-character
   `if` statements.
 - Put look-ahead and look-behind decisions in small policy handlers that receive
   a shared parse-state reference with raw pointer context (`first`, `last`,
   `current`) so future custom recognizers can inspect local byte spans without
   changing the core scanner. Do not allocate a context object per scanned byte.
-- Keep scalar-specific helper calls inside the relevant `ParseFlag` policy
-  handler when possible, including boolean recognizers (`t/T` and `f/F`) as
-  well as numeric markers. Avoid a separate discovery pass followed by a second
-  parse pass for the common built-in kinds.
+- Keep scalar-specific helper calls inside the relevant policy handler when
+  possible, including boolean recognizers (`t/T` and `f/F`) as well as numeric
+  markers. Avoid a separate discovery pass followed by a second parse pass for
+  the common built-in kinds.
 - Prefer compile-time-aware parse policy types over defensive runtime checks in
-  the switch. The built-in policy owns `RecognizeBool`/`RecognizeHex` and each
+  the switch. Built-in policy packs own which recognizers are present, and each
   interesting `ParseFlag` has an explicit handler.
-- Keep the parse table policy-aware for table-driven flags. Bool starter bytes
-  and numeric signs are handled before the numeric switch because they are only
-  significant at the first byte. If hex recognition is disabled at compile time,
-  the table should not map bytes to hex `ParseFlag` values.
+- Keep parse and dispatch tables policy-aware. If bool recognition is disabled
+  at compile time, bool starter bytes should not dispatch to the bool policy. If
+  hex recognition is disabled at compile time, the parse table should not map
+  bytes to hex `ParseFlag` values.
+- The bool parser currently uses a SWAR-style 32-bit word load plus lowercase
+  bitmask for `true`/`false`. Benchmarks have been noisy: narrow losses with
+  occasional larger wins. Treat this as a deliberate experiment and re-test it
+  against the simpler ASCII lowercase-table implementation when touching bool
+  parsing or code layout.
 - Keep public wrappers responsible for pointer validation, output validation,
   and optional trimming. The internal trimmed classifier handles the empty
   trimmed-span/null decision before calling the hot numeric switch.
@@ -73,6 +84,8 @@ from csv-parser/csvzall scalar inference work.
 - float
 - int, including hexadecimal and scientific notation when the final value is an
   integer
+- conservative ISO date/date-time timestamp strings, such as `YYYY-MM-DD` and
+  `YYYY-MM-DDTHH:MM:SSZ`
 
 Whitespace-only input is treated as null so callers can share csv-parser-style
 empty-field semantics.
@@ -90,4 +103,7 @@ empty-field semantics.
 
 - Prefer LF (`\n`) line endings for tracked source, tests, CMake, and Markdown.
 - Keep preprocessor directives flush left.
+- Prefer no braces for simple one-line `if` bodies, especially guard returns
+  and direct assignments. Keep braces when an `else`, nesting, or future edit
+  risk would make the control flow harder to read.
 - Avoid unrelated refactors or metadata churn.

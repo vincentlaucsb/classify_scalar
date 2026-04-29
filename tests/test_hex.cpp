@@ -31,5 +31,10 @@ TEST_CASE("malformed hexadecimal values fall back to string") {
 }
 
 TEST_CASE("hexadecimal recognition can be disabled at compile time") {
-    CHECK(classify_scalar::classify_scalar<true, true, false>("0x10") == scalar_string);
+    typedef classify_scalar::policy_pack<
+        classify_scalar::builtin_timestamp_policy,
+        classify_scalar::builtin_numeric_policy<false>,
+        classify_scalar::builtin_bool_policy> no_hex_pack;
+
+    CHECK(classify_scalar::classify_scalar("0x10", classify_scalar::classify_only_output(), no_hex_pack()) == scalar_string);
 }

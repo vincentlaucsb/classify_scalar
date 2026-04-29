@@ -62,18 +62,15 @@
 #include <system_error>
 #if !defined(CLASSIFY_SCALAR_DISABLE_STD_FROM_CHARS)
 #include <charconv>
-#define CLASSIFY_SCALAR_HAS_STD_FROM_CHARS 1
 #if defined(_LIBCPP_VERSION)
 #define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
 #else
 #define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 1
 #endif
 #else
-#define CLASSIFY_SCALAR_HAS_STD_FROM_CHARS 0
 #define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
 #endif
 #else
-#define CLASSIFY_SCALAR_HAS_STD_FROM_CHARS 0
 #define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
 #endif
 
@@ -385,16 +382,26 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_false(const char* first, const char* las
     return true;
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE int digit_value(const char c) noexcept {
-    const unsigned char byte = static_cast<unsigned char>(c);
-    if (is_ascii_digit(byte))
-        return c - '0';
+CONSTEXPR_VALUE_14 unsigned char invalid_digit_value = 255U;
 
-    const char lower = ascii_lower_char(byte);
-    if (lower >= 'a' && lower <= 'f')
-        return lower - 'a' + 10;
+CONSTEXPR_14 std::array<unsigned char, 256> create_digit_values_table() noexcept {
+    std::array<unsigned char, 256> table = {};
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        table[i] = invalid_digit_value;
+    }
+    for (unsigned char i = 0; i < 10; ++i) {
+        table[static_cast<unsigned char>('0' + i)] = i;
+    }
+    for (unsigned char i = 0; i < 26; ++i) {
+        table[static_cast<unsigned char>('A' + i)] = static_cast<unsigned char>(10U + i);
+        table[static_cast<unsigned char>('a' + i)] = static_cast<unsigned char>(10U + i);
+    }
+    return table;
+}
 
-    return -1;
+CLASSIFY_SCALAR_FORCE_INLINE unsigned char digit_value(const char c) noexcept {
+    static const std::array<unsigned char, 256> digit_values = create_digit_values_table();
+    return digit_values[static_cast<unsigned char>(c)];
 }
 
 CLASSIFY_SCALAR_CONST CONSTEXPR_14 bool is_leap_year(const int year) noexcept {
@@ -521,49 +528,11 @@ CONSTEXPR_VALUE_14 std::uint64_t int64_negative_limit = int64_positive_limit + 1
 CONSTEXPR_VALUE_14 long double int64_min_long_double = static_cast<long double>(int64_min_value);
 CONSTEXPR_VALUE_14 long double int64_max_long_double = static_cast<long double>(int64_max_value);
 
-CLASSIFY_SCALAR_FORCE_INLINE bool fits_signed_accumulate(
-    std::uint64_t& acc,
-    const unsigned digit,
-    const std::uint64_t limit) noexcept {
-    if (acc > (limit - digit) / 10U)
-        return false;
-
-    acc = (acc * 10U) + digit;
-    return true;
-}
-
-#if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
-CLASSIFY_SCALAR_FORCE_INLINE bool parse_decimal_integer_from_chars(
+CLASSIFY_SCALAR_FORCE_INLINE bool finish_signed_integer(
     const parse_state& state,
+    const std::uint64_t magnitude,
+    const std::uint64_t limit,
     std::int64_t* out) noexcept {
-    const char* first = state.numeric_first;
-    const char* last = state.last;
-    std::int64_t parsed = 0;
-    assert(first != last);
-
-    const std::from_chars_result result = std::from_chars(first, last, parsed, 10);
-    if (result.ec != std::errc() || result.ptr != last)
-        return false;
-
-    if (out)
-        *out = parsed;
-
-    return true;
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex_integer_from_chars(
-    const parse_state& state,
-    const char* first,
-    const char* last,
-    std::int64_t* out) noexcept {
-    assert(first != last);
-
-    std::uint64_t magnitude = 0;
-    const std::from_chars_result result = std::from_chars(first, last, magnitude, 16);
-    if (result.ec != std::errc() || result.ptr != last)
-        return false;
-
-    const std::uint64_t limit = state.sign == parse_state::negative_sign ? int64_negative_limit : int64_positive_limit;
     if (magnitude > limit)
         return false;
 
@@ -579,45 +548,38 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex_integer_from_chars(
 
     return true;
 }
-#endif
 
-CLASSIFY_SCALAR_FORCE_INLINE bool parse_decimal_integer(
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_integer_digits(
     const parse_state& state,
+    const char* first,
+    const char* last,
+    const unsigned base,
     std::int64_t* out) noexcept {
-#if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
-    return parse_decimal_integer_from_chars(state, out);
-#else
-    const char* first = state.sign == parse_state::no_sign ? state.first : state.first + 1;
-    const char* last = state.last;
     assert(first != last);
 
     const std::uint64_t limit = state.sign == parse_state::negative_sign ? int64_negative_limit : int64_positive_limit;
 
     std::uint64_t acc = 0;
     for (const char* current = first; current != last; ++current) {
-        const char c = *current;
-        if (!is_ascii_digit(static_cast<unsigned char>(c)))
+        const unsigned char digit = digit_value(*current);
+        if (digit >= base)
             return false;
 
-        if (!fits_signed_accumulate(acc, static_cast<unsigned>(c - '0'), limit))
+        if (acc > (limit - digit) / base)
             return false;
+
+        acc = (acc * base) + digit;
     }
 
-    if (!out)
-        return true;
+    return finish_signed_integer(state, acc, limit, out);
+}
 
-    if (state.sign == parse_state::negative_sign) {
-        if (acc == limit) {
-            *out = int64_min_value;
-        } else {
-            *out = -static_cast<std::int64_t>(acc);
-        }
-    } else {
-        *out = static_cast<std::int64_t>(acc);
-    }
-
-    return true;
-#endif
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_decimal_integer(
+    const parse_state& state,
+    std::int64_t* out) noexcept {
+    const char* first = state.sign == parse_state::no_sign ? state.first : state.first + 1;
+    const char* last = state.last;
+    return parse_integer_digits(state, first, last, 10U, out);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex_integer(
@@ -635,38 +597,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex_integer(
 
     assert(current != last);
 
-#if CLASSIFY_SCALAR_HAS_STD_FROM_CHARS
-    return parse_hex_integer_from_chars(state, current, last, out);
-#else
-    const std::uint64_t limit = state.sign == parse_state::negative_sign ? int64_negative_limit : int64_positive_limit;
-
-    std::uint64_t acc = 0;
-    for (; current != last; ++current) {
-        const int digit = digit_value(*current);
-        if (digit < 0)
-            return false;
-
-        if (acc > (limit - static_cast<unsigned>(digit)) / 16U)
-            return false;
-
-        acc = (acc * 16U) + static_cast<unsigned>(digit);
-    }
-
-    if (!out)
-        return true;
-
-    if (state.sign == parse_state::negative_sign) {
-        if (acc == limit) {
-            *out = int64_min_value;
-        } else {
-            *out = -static_cast<std::int64_t>(acc);
-        }
-    } else {
-        *out = static_cast<std::int64_t>(acc);
-    }
-
-    return true;
-#endif
+    return parse_integer_digits(state, current, last, 16U, out);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating(

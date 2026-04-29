@@ -10,8 +10,10 @@ from csv-parser/csvzall scalar inference work.
 - Do not add library `.cpp` files. Tests may use `.cpp` files.
 - Keep the public header C++11 compatible. Newer standards may get nicer
   overloads or aliases when available, but the baseline must compile as C++11.
-- Prefer `std::from_chars` for built-in numeric conversion when compiling as
-  C++17 or newer. Keep C++11 fallback parsers in the header for older callers.
+- Use the bundled parser for built-in integer conversion in all language modes.
+  Prefer `std::from_chars` for floating-point conversion when compiling as C++17
+  or newer and the standard library provides a real implementation. Keep C++11
+  fallback parsers in the header for older callers.
 - Keep hot-path parser options compile-time first. `TrimAsciiWhitespace` is the
   public classifier template knob. Built-in recognizers should be selected by
   composing policy packs, such as omitting `builtin_bool_policy` or using

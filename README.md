@@ -34,8 +34,10 @@ User policy packs are ordered by priority: the first policy whose
 `on_dispatch(parse_state&, output&)`. If that policy returns `scalar_string`,
 the pack falls through to the next policy that matches the same leading byte.
 
-When compiled as C++17 or newer, numeric conversion uses `std::from_chars`.
-C++11 builds use the bundled fallback parsers.
+Integer conversion uses the bundled parser in all language modes. When compiled
+as C++17 or newer, floating-point conversion uses `std::from_chars` where the
+standard library provides a real implementation; older builds use the bundled
+fallback parser.
 
 Hot-path behavior can be selected at compile time:
 

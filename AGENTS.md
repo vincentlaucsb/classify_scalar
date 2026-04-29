@@ -18,10 +18,9 @@ from csv-parser/csvzall scalar inference work.
   `builtin_numeric_policy<false>` to disable hexadecimal parsing. Avoid runtime
   option-dispatch overloads unless a concrete downstream need justifies the
   compile-time cost.
-- Use the local compatibility macros copied from csv-parser (`IF_CONSTEXPR`,
-  `CONSTEXPR`, `CONSTEXPR_VALUE`, `CONSTEXPR_14`, `CONSTEXPR_VALUE_14`,
-  `CONSTEXPR_17`, and `CLASSIFY_SCALAR_CONST`) for cross-standard constexpr
-  and compiler attribute concerns.
+- Use the local compatibility macros copied from csv-parser (`CONSTEXPR_14`,
+  `CONSTEXPR_VALUE_14`, and `CLASSIFY_SCALAR_CONST`) for cross-standard
+  constexpr and compiler attribute concerns.
 - Keep the API close to C with templates: pointer spans, plain structs, integer
   kind ids, and small free functions.
 - Prefer pointer spans (`const char* first`, `const char* last`) for hot-path

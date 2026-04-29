@@ -18,10 +18,6 @@
 #define CLASSIFY_SCALAR_CPLUSPLUS __cplusplus
 #endif
 
-#if CLASSIFY_SCALAR_CPLUSPLUS >= 202002L
-#define CLASSIFY_SCALAR_HAS_CXX20
-#endif
-
 #if CLASSIFY_SCALAR_CPLUSPLUS >= 201703L
 #define CLASSIFY_SCALAR_HAS_CXX17
 #endif
@@ -53,36 +49,12 @@
 #define CLASSIFY_SCALAR_FORCE_INLINE inline
 #endif
 
-#ifdef CLASSIFY_SCALAR_HAS_CXX17
-#define IF_CONSTEXPR if constexpr
-#define CONSTEXPR_VALUE constexpr
-#define CONSTEXPR_17 constexpr
-#else
-#define IF_CONSTEXPR if
-#define CONSTEXPR_VALUE const
-#define CONSTEXPR_17 inline
-#endif
-
 #ifdef CLASSIFY_SCALAR_HAS_CXX14
 #define CONSTEXPR_14 constexpr
 #define CONSTEXPR_VALUE_14 constexpr
 #else
 #define CONSTEXPR_14 inline
 #define CONSTEXPR_VALUE_14 const
-#endif
-
-#if defined(__GNUC__) && !defined(__clang__)
-#if defined(CLASSIFY_SCALAR_HAS_CXX17) && (((__GNUC__ == 7) && (__GNUC_MINOR__ >= 2)) || (__GNUC__ >= 8))
-#define CONSTEXPR constexpr
-#endif
-#else
-#ifdef CLASSIFY_SCALAR_HAS_CXX17
-#define CONSTEXPR constexpr
-#endif
-#endif
-
-#ifndef CONSTEXPR
-#define CONSTEXPR inline
 #endif
 
 #if CLASSIFY_SCALAR_CPLUSPLUS >= 201703L
@@ -107,16 +79,13 @@
 
 namespace classify_scalar {
 
-#define CLASSIFY_SCALAR_BUILTIN_KINDS \
-    scalar_null = 0,                  \
-    scalar_string = 1,                \
-    scalar_bool = 2,                  \
-    scalar_int = 3,                   \
-    scalar_float = 4,                 \
-    scalar_timestamp = 5
-
 enum ScalarKind : int {
-    CLASSIFY_SCALAR_BUILTIN_KINDS,
+    scalar_null = 0,
+    scalar_string = 1,
+    scalar_bool = 2,
+    scalar_int = 3,
+    scalar_float = 4,
+    scalar_timestamp = 5,
     scalar_invalid = -2,
     scalar_custom_begin = 1024
 };
@@ -229,14 +198,6 @@ struct dispatch_table_type {
     unsigned char values[256];
 
     CONSTEXPR_14 unsigned char operator[](unsigned char value) const noexcept {
-        return values[value];
-    }
-};
-
-struct ascii_lower_table_type {
-    char values[256];
-
-    CONSTEXPR_14 char operator[](unsigned char value) const noexcept {
         return values[value];
     }
 };
@@ -367,17 +328,6 @@ CLASSIFY_SCALAR_FORCE_INLINE const dispatch_table_type& dispatch_table() noexcep
     return table;
 }
 
-template<std::size_t... Indexes>
-CONSTEXPR_14 ascii_lower_table_type build_ascii_lower_table(index_sequence<Indexes...>) noexcept {
-    return ascii_lower_table_type{{ascii_lower_char(static_cast<unsigned char>(Indexes))...}};
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE const ascii_lower_table_type& ascii_lower_table() noexcept {
-    static CONSTEXPR_VALUE_14 ascii_lower_table_type table =
-        build_ascii_lower_table(typename make_index_sequence<256>::type());
-    return table;
-}
-
 CONSTEXPR_14 std::array<bool, 256> create_ascii_digits_table() noexcept {
     std::array<bool, 256> table = {};
     for (std::size_t i = 0; i < table.size(); ++i) {
@@ -458,9 +408,7 @@ CONSTEXPR_VALUE_14 int common_days_in_month[13] = {
 };
 
 CLASSIFY_SCALAR_CONST CONSTEXPR_14 int days_in_month(const int year, const int month) noexcept {
-    return month == 2 && is_leap_year(year)
-        ? 29
-        : common_days_in_month[month];
+    return month == 2 && is_leap_year(year) ? 29 : common_days_in_month[month];
 }
 
 template<std::size_t Count>
@@ -478,10 +426,8 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_digits(const char* value, int& out) noex
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool valid_iso_date(const int year, const int month, const int day) noexcept {
-    if (month < 1 || month > 12)
-        return false;
-
-    return day >= 1 && day <= days_in_month(year, month);
+    return (month < 1 || month > 12) ? false :
+        day >= 1 && day <= days_in_month(year, month);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool consume_iso_timezone(const char*& current, const char* last) noexcept {
@@ -831,7 +777,7 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    ScalarKind on_decimal(
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_decimal(
         parse_state& state,
         Output& output) const noexcept {
         double parsed_float = 0;
@@ -841,7 +787,7 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    ScalarKind on_exponent(
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_exponent(
         parse_state& state,
         Output& output) const noexcept {
         if (state.current == state.first || state.current + 1 == state.last)
@@ -854,7 +800,7 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    ScalarKind on_hex_prefix(
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_hex_prefix(
         parse_state& state,
         Output& output) const noexcept {
         if (state.current == state.first || state.current + 1 == state.last)
@@ -867,7 +813,7 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    ScalarKind on_end(
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_end(
         parse_state& state,
         Output& output) const noexcept {
         std::int64_t parsed_integer = 0;
@@ -877,40 +823,10 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    ScalarKind on_number(
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind scan_number(
         parse_state& state,
+        const char* scan_first,
         Output& output) const noexcept {
-        const unsigned char first_char = static_cast<unsigned char>(*state.first);
-        const char* scan_first = state.first + 1;
-
-        if (first_char == '+' || first_char == '-') {
-            state.current = state.first;
-            state.sign = first_char == '-'
-                ? parse_state::negative_sign
-                : parse_state::positive_sign;
-            state.numeric_first = state.sign == parse_state::negative_sign
-                ? state.first
-                : state.first + 1;
-            const char* value_first = state.first + 1;
-            if (value_first == state.last)
-                return scalar_string;
-
-            const unsigned char value_first_char = static_cast<unsigned char>(*value_first);
-            if (is_ascii_digit(value_first_char)) {
-                scan_first = value_first + 1;
-            } else if (value_first_char == '.') {
-                state.current = value_first;
-                return on_decimal(state, output);
-            } else {
-                return scalar_string;
-            }
-        } else if (first_char == '.') {
-            state.current = state.first;
-            return on_decimal(state, output);
-        } else {
-            assert(is_ascii_digit(first_char));
-        }
-
         for (const char* current = scan_first; current != state.last; ++current) {
             state.current = current;
             const unsigned char c = static_cast<unsigned char>(*current);
@@ -933,6 +849,37 @@ struct builtin_numeric_policy {
 
         state.current = state.last;
         return on_end(state, output);
+    }
+
+    template<typename Output>
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_number(
+        parse_state& state,
+        Output& output) const noexcept {
+        const unsigned char first_char = static_cast<unsigned char>(*state.first);
+        const char* value_first = state.first;
+
+        if (first_char == '+' || first_char == '-') {
+            state.sign = first_char == '-'
+                ? parse_state::negative_sign
+                : parse_state::positive_sign;
+            state.numeric_first = state.sign == parse_state::negative_sign
+                ? state.first
+                : state.first + 1;
+            value_first = state.first + 1;
+            if (value_first == state.last)
+                return scalar_string;
+        }
+
+        const unsigned char value_first_char = static_cast<unsigned char>(*value_first);
+        if (value_first_char == '.') {
+            state.current = value_first;
+            return on_decimal(state, output);
+        }
+
+        if (!is_ascii_digit(value_first_char))
+            return scalar_string;
+
+        return scan_number(state, value_first + 1, output);
     }
 };
 

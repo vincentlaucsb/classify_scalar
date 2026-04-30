@@ -55,6 +55,34 @@ const std::vector<bench_case>& mixed_cases() {
     return cases;
 }
 
+const std::vector<bench_case>& int_parse_cases() {
+    static const std::vector<bench_case> cases = {
+        {"0"},
+        {"42"},
+        {"-17"},
+        {"2147483647"},
+        {"-2147483648"},
+        {"9223372036854775807"},
+        {"-9223372036854775808"},
+        {"123456789"},
+    };
+    return cases;
+}
+
+const std::vector<bench_case>& float_parse_cases() {
+    static const std::vector<bench_case> cases = {
+        {"0.0"},
+        {"3.14159"},
+        {"-1.25e2"},
+        {"1e-3"},
+        {"6.02214076e23"},
+        {"-2.2250738585072014e-308"},
+        {"1.7976931348623157e308"},
+        {".67"},
+    };
+    return cases;
+}
+
 inline bool ascii_space(char c) noexcept {
     switch (c) {
     case ' ':
@@ -446,6 +474,50 @@ BenchKind classify_naive_from_chars(std::string_view value) {
     return BenchKind::string;
 }
 
+std::int64_t parse_int_classify_scalar(std::string_view value) {
+    long double number = 0;
+    std::int64_t integer = 0;
+    bool boolean = false;
+    const auto kind = classify_scalar::classify_scalar<false>(
+        value,
+        classify_scalar::output_refs(number, integer, boolean),
+        classify_scalar::numeric_policy_pack());
+
+    return kind == classify_scalar::scalar_int ? integer : 0;
+}
+
+std::int64_t parse_int_from_chars(std::string_view value) {
+    std::int64_t integer = 0;
+    const char* first = value.data();
+    const char* last = first + value.size();
+    const auto result = std::from_chars(first, last, integer, 10);
+    return result.ec == std::errc{} && result.ptr == last ? integer : 0;
+}
+
+double parse_float_classify_scalar(std::string_view value) {
+    long double number = 0;
+    std::int64_t integer = 0;
+    bool boolean = false;
+    const auto kind = classify_scalar::classify_scalar<false>(
+        value,
+        classify_scalar::output_refs(number, integer, boolean),
+        classify_scalar::numeric_policy_pack());
+
+    return kind == classify_scalar::scalar_float || kind == classify_scalar::scalar_int
+        ? static_cast<double>(number)
+        : 0.0;
+}
+
+double parse_float_from_chars(std::string_view value) {
+    double number = 0;
+    const char* first = value.data();
+    const char* last = first + value.size();
+    const auto result = std::from_chars(first, last, number);
+    return result.ec == std::errc{} && result.ptr == last && std::isfinite(number)
+        ? number
+        : 0.0;
+}
+
 template<typename Classifier>
 void run_classifier(benchmark::State& state, Classifier classifier) {
     const auto& cases = mixed_cases();
@@ -455,6 +527,23 @@ void run_classifier(benchmark::State& state, Classifier classifier) {
     for (auto _ : state) {
         const auto kind = classifier(cases[i].value);
         sink += static_cast<int>(kind);
+        ++i;
+        if (i == cases.size()) {
+            i = 0;
+        }
+    }
+
+    benchmark::DoNotOptimize(sink);
+    state.SetItemsProcessed(state.iterations());
+}
+
+template<typename Parser, typename Value>
+void run_parser(benchmark::State& state, const std::vector<bench_case>& cases, Parser parser, Value initial) {
+    std::size_t i = 0;
+    Value sink = initial;
+
+    for (auto _ : state) {
+        sink += parser(cases[i].value);
         ++i;
         if (i == cases.size()) {
             i = 0;
@@ -479,6 +568,26 @@ static void BM_naive_from_chars(benchmark::State& state) {
     run_classifier(state, classify_naive_from_chars);
 }
 
+static void BM_parse_int_classify_scalar(benchmark::State& state) {
+    run_parser(state, int_parse_cases(), parse_int_classify_scalar, std::int64_t{0});
+}
+
+static void BM_parse_int_from_chars(benchmark::State& state) {
+    run_parser(state, int_parse_cases(), parse_int_from_chars, std::int64_t{0});
+}
+
+static void BM_parse_float_classify_scalar(benchmark::State& state) {
+    run_parser(state, float_parse_cases(), parse_float_classify_scalar, 0.0);
+}
+
+static void BM_parse_float_from_chars(benchmark::State& state) {
+    run_parser(state, float_parse_cases(), parse_float_from_chars, 0.0);
+}
+
 BENCHMARK(BM_classify_scalar);
 BENCHMARK(BM_previous_data_type);
 BENCHMARK(BM_naive_from_chars);
+BENCHMARK(BM_parse_int_classify_scalar);
+BENCHMARK(BM_parse_int_from_chars);
+BENCHMARK(BM_parse_float_classify_scalar);
+BENCHMARK(BM_parse_float_from_chars);

@@ -10,6 +10,8 @@ from csv-parser/csvzall scalar inference work.
 - Do not add library `.cpp` files. Tests may use `.cpp` files.
 - Keep the public header C++11 compatible. Newer standards may get nicer
   overloads or aliases when available, but the baseline must compile as C++11.
+- C++20-only conveniences may use concepts to improve diagnostics for custom
+  policy packs, but they must be guarded so C++11/C++17 users do not see them.
 - Use the bundled parser for built-in integer conversion in all language modes.
   Prefer `std::from_chars` for floating-point conversion when compiling as C++17
   or newer and the standard library provides a real implementation. Keep C++11

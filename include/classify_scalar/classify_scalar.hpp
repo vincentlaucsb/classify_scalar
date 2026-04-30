@@ -18,6 +18,10 @@
 #define CLASSIFY_SCALAR_CPLUSPLUS __cplusplus
 #endif
 
+#if CLASSIFY_SCALAR_CPLUSPLUS >= 202002L
+#define CLASSIFY_SCALAR_HAS_CXX20
+#endif
+
 #if CLASSIFY_SCALAR_CPLUSPLUS >= 201703L
 #define CLASSIFY_SCALAR_HAS_CXX17
 #endif
@@ -55,6 +59,18 @@
 #else
 #define CONSTEXPR_14 inline
 #define CONSTEXPR_VALUE_14 const
+#endif
+
+#ifdef CLASSIFY_SCALAR_HAS_CXX17
+#define CONSTEXPR_17 constexpr
+#define CONSTEXPR_VALUE_17 constexpr
+#else
+#define CONSTEXPR_17 inline
+#define CONSTEXPR_VALUE_17 const
+#endif
+
+#ifdef CLASSIFY_SCALAR_HAS_CXX20
+#include <concepts>
 #endif
 
 #if CLASSIFY_SCALAR_CPLUSPLUS >= 201703L
@@ -220,6 +236,18 @@ struct parse_state {
     Sign sign;
 };
 
+#ifdef CLASSIFY_SCALAR_HAS_CXX20
+template<typename Policy>
+concept scalar_policy = requires(
+    unsigned char c,
+    const Policy& policy,
+    parse_state& state,
+    classify_only_output& output) {
+    { Policy::matches_leading(c) } -> std::convertible_to<bool>;
+    { policy.on_dispatch(state, output) } -> std::same_as<ScalarKind>;
+};
+#endif
+
 CONSTEXPR_VALUE_14 unsigned char no_dispatch_policy = 255U;
 
 template<unsigned char Index, typename... Policies>
@@ -278,6 +306,9 @@ struct policy_dispatch_impl<Count, Count> {
 };
 
 template<typename... Policies>
+#ifdef CLASSIFY_SCALAR_HAS_CXX20
+requires (scalar_policy<Policies> && ...)
+#endif
 struct policy_pack {
     typedef std::tuple<Policies...> tuple_type;
 
@@ -340,7 +371,7 @@ CLASSIFY_SCALAR_FORCE_INLINE std::uint32_t load_u32(const char* value) noexcept 
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool is_ascii_digit(const unsigned char c) noexcept {
-    static const std::array<bool, 256> ascii_digits = create_ascii_digits_table();
+    static CONSTEXPR_VALUE_17 std::array<bool, 256> ascii_digits = create_ascii_digits_table();
     return ascii_digits[c];
 }
 
@@ -400,7 +431,7 @@ CONSTEXPR_14 std::array<unsigned char, 256> create_digit_values_table() noexcept
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE unsigned char digit_value(const char c) noexcept {
-    static const std::array<unsigned char, 256> digit_values = create_digit_values_table();
+    static CONSTEXPR_VALUE_17 std::array<unsigned char, 256> digit_values = create_digit_values_table();
     return digit_values[static_cast<unsigned char>(c)];
 }
 

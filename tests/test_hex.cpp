@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 #include <cstdint>
 
@@ -14,6 +14,7 @@ TEST_CASE("classifies hexadecimal integers") {
 
     CHECK(classify_scalar::classify_scalar("0x10", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
     CHECK(integer == 16);
+    CHECK(classify_scalar::classify_numeric_scalar("0x10") == scalar_int);
 
     CHECK(classify_scalar::classify_scalar("0x1e", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
     CHECK(integer == 30);
@@ -28,4 +29,5 @@ TEST_CASE("classifies hexadecimal integers") {
 TEST_CASE("malformed hexadecimal values fall back to string") {
     CHECK(classify_scalar::classify_scalar("0x") == scalar_string);
     CHECK(classify_scalar::classify_scalar("0xgg") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("FF") == scalar_string);
 }

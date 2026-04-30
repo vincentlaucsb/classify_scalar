@@ -1,4 +1,4 @@
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 namespace {
 

@@ -1,4 +1,4 @@
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 #include <cstdint>
 
@@ -24,6 +24,15 @@ int main() {
     }
     if (classify_scalar::classify_scalar("1e-3", outputs) != classify_scalar::scalar_float) {
         return 5;
+    }
+    if (classify_scalar::classify_scalar("9223372036854775808") != classify_scalar::scalar_bigint) {
+        return 6;
+    }
+    if (classify_scalar::classify_numeric_scalar("true") != classify_scalar::scalar_string) {
+        return 7;
+    }
+    if (classify_scalar::classify_numeric_scalar_with_decimal_symbol("3,14", ',') != classify_scalar::scalar_float) {
+        return 8;
     }
 
     return 0;

@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 using classify_scalar::scalar_int;
 using classify_scalar::scalar_string;

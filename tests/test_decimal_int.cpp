@@ -1,11 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 #include <cstdint>
 #include <limits>
 
 using classify_scalar::scalar_int;
+using classify_scalar::scalar_bigint;
 using classify_scalar::scalar_string;
 
 TEST_CASE("classifies decimal integers and preserves signed minimum") {
@@ -24,6 +25,12 @@ TEST_CASE("classifies decimal integers and preserves signed minimum") {
     CHECK(integer == std::numeric_limits<std::int64_t>::min());
 }
 
-TEST_CASE("decimal integer overflow falls back to string") {
-    CHECK(classify_scalar::classify_scalar("9223372036854775808") == scalar_string);
+TEST_CASE("decimal integer overflow is classified as bigint") {
+    CHECK(classify_scalar::classify_scalar("9223372036854775807") == scalar_int);
+    CHECK(classify_scalar::classify_scalar("9223372036854775808") == scalar_bigint);
+    CHECK(classify_scalar::classify_scalar("-9223372036854775808") == scalar_int);
+    CHECK(classify_scalar::classify_scalar("-9223372036854775809") == scalar_bigint);
+    CHECK(classify_scalar::classify_scalar("1234567890123456789012345678901234567890") == scalar_bigint);
+    CHECK(classify_scalar::classify_scalar("-1234567890123456789012345678901234567890") == scalar_bigint);
+    CHECK(classify_scalar::classify_scalar("12345678901234567890abc") == scalar_string);
 }

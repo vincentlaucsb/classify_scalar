@@ -12,11 +12,28 @@ $ErrorActionPreference = "Stop"
 $sourceDir = $PSScriptRoot
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
 
+function Find-CmdExe {
+    $candidates = @(
+        $env:ComSpec,
+        (Join-Path $env:SystemRoot "System32\cmd.exe"),
+        "C:\Windows\System32\cmd.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    throw "Could not find cmd.exe. Set ComSpec or pass a usable Windows system path."
+}
+
 function Invoke-NativeBuildCommand {
     param([string]$Command)
 
     if ($env:OS -eq "Windows_NT" -and (Test-Path $VsDevCmd)) {
-        & cmd.exe /d /s /c "call `"$VsDevCmd`" -arch=x64 -host_arch=x64 && $Command"
+        $cmdExe = Find-CmdExe
+        & $cmdExe /d /s /c "call `"$VsDevCmd`" -arch=x64 -host_arch=x64 && $Command"
     } else {
         Invoke-Expression $Command
     }

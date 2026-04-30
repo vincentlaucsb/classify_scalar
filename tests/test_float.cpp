@@ -1,7 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 #include <cstdint>
 
@@ -73,10 +73,36 @@ TEST_CASE("classifies exponential notation") {
     CHECK(integer == -125);
     CHECK(number == -125.0L);
 
+    CHECK(classify_scalar::classify_scalar("1e3", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
+    CHECK(integer == 1000);
+
     CHECK(classify_scalar::classify_scalar("1e-3", classify_scalar::output_refs(number, integer, boolean)) == scalar_float);
     CHECK(static_cast<double>(number) == Catch::Approx(0.001));
 }
 
 TEST_CASE("malformed exponential notation falls back to string") {
     CHECK(classify_scalar::classify_scalar("1e") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("1e    -3") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("1e-") == scalar_string);
+}
+
+TEST_CASE("numeric policy can preserve floating syntax as float") {
+    typedef classify_scalar::policy_pack<
+        classify_scalar::builtin_numeric_policy<'.', false> > floating_syntax_pack;
+
+    std::int64_t integer = 0;
+    long double number = 0;
+    bool boolean = false;
+
+    CHECK(classify_scalar::classify_scalar(
+        "1e3",
+        classify_scalar::output_refs(number, integer, boolean),
+        floating_syntax_pack()) == scalar_float);
+    CHECK(static_cast<double>(number) == Catch::Approx(1000.0));
+
+    CHECK(classify_scalar::classify_scalar(
+        "-1.25e2",
+        classify_scalar::output_refs(number, integer, boolean),
+        floating_syntax_pack()) == scalar_float);
+    CHECK(static_cast<double>(number) == Catch::Approx(-125.0));
 }

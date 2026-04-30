@@ -19,7 +19,9 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
         test_decimal_int.cpp
         test_float.cpp
         test_hex.cpp
+        test_macro_hygiene.cpp
         test_null_string_trim.cpp
+        test_numeric_only.cpp
         test_outputs.cpp
         test_policy_pack.cpp
         test_telephone_policy.cpp

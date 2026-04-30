@@ -6,7 +6,7 @@ from csv-parser/csvzall scalar inference work.
 ## Project Shape
 
 - Keep the library single-header only.
-- The public header is `include/classify_scalar/classify_scalar.hpp`.
+- The public header is `include/classify_scalar.hpp`.
 - Do not add library `.cpp` files. Tests may use `.cpp` files.
 - Keep the public header C++11 compatible. Newer standards may get nicer
   overloads or aliases when available, but the baseline must compile as C++11.
@@ -19,13 +19,16 @@ from csv-parser/csvzall scalar inference work.
 - Keep hot-path parser options compile-time first. `TrimAsciiWhitespace` is the
   public classifier template knob. Built-in recognizers should be selected by
   composing policy packs, such as omitting `builtin_bool_policy`. The built-in
-  numeric policy always recognizes hexadecimal integers; its template argument
-  selects the decimal separator, such as `builtin_numeric_policy<','>`. Avoid
-  runtime option-dispatch overloads unless a concrete downstream need justifies
-  the compile-time cost.
-- Use the local compatibility macros copied from csv-parser (`CONSTEXPR_14`,
-  `CONSTEXPR_VALUE_14`, `CONSTEXPR_17`, `CONSTEXPR_VALUE_17`, and
-  `CLASSIFY_SCALAR_CONST`) for cross-standard
+  numeric policy recognizes `0x` hexadecimal integers and does not recognize
+  bare hex by default. Its first template argument selects the decimal
+  separator, such as `builtin_numeric_policy<','>`, and its second template
+  argument controls whether integral-valued floating syntax returns
+  `scalar_int`. Keep runtime dispatchers tiny and explicit, such as the provided
+  dot/comma numeric decimal-symbol helper.
+- Use prefixed local compatibility macros (`CLASSIFY_SCALAR_CONSTEXPR_14`,
+  `CLASSIFY_SCALAR_CONSTEXPR_VALUE_14`,
+  `CLASSIFY_SCALAR_CONSTEXPR_17`,
+  `CLASSIFY_SCALAR_CONSTEXPR_VALUE_17`, and `CLASSIFY_SCALAR_CONST`) for cross-standard
   constexpr and compiler attribute concerns.
 - Keep the API close to C with templates: pointer spans, plain structs, integer
   kind ids, and small free functions.
@@ -44,10 +47,15 @@ from csv-parser/csvzall scalar inference work.
 - Keep the common numeric path cheap. Classification without storage should use
   the default no-op output policy. Built-in storage should use
   `output_refs(number, integer, boolean)`, and future custom policies may define
-  their own output objects with matching hooks.
+  their own output objects with matching hooks. Prefer showing extension by
+  deriving from `builtin_output_refs` and adding domain-specific setters, so
+  built-in numeric/bool storage keeps working.
 - Return integer kind ids. The built-in enum names reserve the default ids.
-  Custom policies should define their own enum values starting at the documented
-  custom range and return them with `to_scalar_kind()`.
+  Decimal integers outside int64 classify as `scalar_bigint`; do not allocate or
+  store the full bigint value on the built-in path.
+  Custom policies should define their own enum values with
+  `CLASSIFY_SCALAR_BUILTINS` and can return that enum directly when callers use
+  the typed classifier template.
 - Optimize for the common path while preserving custom type extensibility.
 - Use compile-time ASCII tables for parser-family dispatch. Built-in dispatch
   maps leading bytes to numeric or bool policy families. Numeric internals own
@@ -88,8 +96,9 @@ from csv-parser/csvzall scalar inference work.
 - string
 - bool
 - float
-- int, including hexadecimal and scientific notation when the final value is an
-  integer
+- int, including `0x` hexadecimal and scientific notation when the final value is
+  an integer
+- bigint for decimal integer literals outside int64
 - conservative ISO date/date-time timestamp strings, such as `YYYY-MM-DD` and
   `YYYY-MM-DDTHH:MM:SSZ`
 

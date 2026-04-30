@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <classify_scalar/classify_scalar.hpp>
+#include <classify_scalar.hpp>
 
 #include <cstdint>
 
@@ -25,6 +25,6 @@ TEST_CASE("trims ASCII whitespace by default") {
 }
 
 TEST_CASE("can preserve exact scalar boundaries") {
-    CHECK(classify_scalar::classify_scalar<false>("   42  ") == scalar_string);
-    CHECK(classify_scalar::classify_scalar<false>("42") == scalar_int);
+    CHECK(classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>("   42  ") == scalar_string);
+    CHECK(classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>("42") == scalar_int);
 }

@@ -18,12 +18,14 @@ from csv-parser/csvzall scalar inference work.
   fallback parsers in the header for older callers.
 - Keep hot-path parser options compile-time first. `TrimAsciiWhitespace` is the
   public classifier template knob. Built-in recognizers should be selected by
-  composing policy packs, such as omitting `builtin_bool_policy` or using
-  `builtin_numeric_policy<false>` to disable hexadecimal parsing. Avoid runtime
-  option-dispatch overloads unless a concrete downstream need justifies the
-  compile-time cost.
+  composing policy packs, such as omitting `builtin_bool_policy`. The built-in
+  numeric policy always recognizes hexadecimal integers; its template argument
+  selects the decimal separator, such as `builtin_numeric_policy<','>`. Avoid
+  runtime option-dispatch overloads unless a concrete downstream need justifies
+  the compile-time cost.
 - Use the local compatibility macros copied from csv-parser (`CONSTEXPR_14`,
-  `CONSTEXPR_VALUE_14`, and `CLASSIFY_SCALAR_CONST`) for cross-standard
+  `CONSTEXPR_VALUE_14`, `CONSTEXPR_17`, `CONSTEXPR_VALUE_17`, and
+  `CLASSIFY_SCALAR_CONST`) for cross-standard
   constexpr and compiler attribute concerns.
 - Keep the API close to C with templates: pointer spans, plain structs, integer
   kind ids, and small free functions.
@@ -43,8 +45,9 @@ from csv-parser/csvzall scalar inference work.
   the default no-op output policy. Built-in storage should use
   `output_refs(number, integer, boolean)`, and future custom policies may define
   their own output objects with matching hooks.
-- Return integer kind ids. The built-in enum names reserve the default ids, and
-  future custom policies should use ids starting at the documented custom range.
+- Return integer kind ids. The built-in enum names reserve the default ids.
+  Custom policies should define their own enum values starting at the documented
+  custom range and return them with `to_scalar_kind()`.
 - Optimize for the common path while preserving custom type extensibility.
 - Use compile-time ASCII tables for parser-family dispatch. Built-in dispatch
   maps leading bytes to numeric or bool policy families. Numeric internals own
@@ -68,9 +71,9 @@ from csv-parser/csvzall scalar inference work.
   the switch. Built-in policy packs own which recognizers are present, and each
   interesting `ParseFlag` has an explicit handler.
 - Keep parse and dispatch tables policy-aware. If bool recognition is disabled
-  at compile time, bool starter bytes should not dispatch to the bool policy. If
-  hex recognition is disabled at compile time, the parse table should not map
-  bytes to hex `ParseFlag` values.
+  at compile time, bool starter bytes should not dispatch to the bool policy.
+  The numeric parse table should map the active decimal separator to
+  `ParseFlag::decimal` and always map `x`/`X` to hex-prefix handling.
 - The bool parser currently uses a SWAR-style 32-bit word load plus lowercase
   bitmask for `true`/`false`. Benchmarks have been noisy: narrow losses with
   occasional larger wins. Treat this as a deliberate experiment and re-test it

@@ -18,8 +18,12 @@
 
 namespace {
 
+enum class app_scalar_kind : int {
+    telephone = classify_scalar::scalar_custom_begin
+};
+
 constexpr classify_scalar::ScalarKind scalar_telephone =
-    static_cast<classify_scalar::ScalarKind>(classify_scalar::scalar_custom_begin + 2);
+    classify_scalar::to_scalar_kind(app_scalar_kind::telephone);
 
 bool is_digit(char c) noexcept {
     return c >= '0' && c <= '9';
@@ -101,7 +105,7 @@ struct telephone_policy {
         classify_scalar::parse_state& state,
         Output&) const noexcept {
         return parse_nanp_telephone(state.first, state.last)
-            ? scalar_telephone
+            ? classify_scalar::to_scalar_kind(app_scalar_kind::telephone)
             : classify_scalar::scalar_string;
     }
 };
@@ -109,7 +113,7 @@ struct telephone_policy {
 typedef classify_scalar::policy_pack<
     telephone_policy,
     classify_scalar::builtin_timestamp_policy,
-    classify_scalar::builtin_numeric_policy<true>,
+    classify_scalar::builtin_numeric_policy<>,
     classify_scalar::builtin_bool_policy> telephone_pack;
 
 } // namespace

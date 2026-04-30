@@ -88,7 +88,7 @@ public classifier template knob; scalar families are selected by policy pack.
 ```cpp
 using no_bool_pack = classify_scalar::policy_pack<
     classify_scalar::builtin_timestamp_policy,
-    classify_scalar::builtin_numeric_policy<true>>;
+    classify_scalar::builtin_numeric_policy<>>;
 
 auto no_bools = classify_scalar::classify_scalar(
     "true",
@@ -96,11 +96,34 @@ auto no_bools = classify_scalar::classify_scalar(
     no_bool_pack());
 ```
 
+The built-in numeric policy recognizes hexadecimal integers by default. Its
+template argument selects the decimal separator:
+
+```cpp
+using comma_decimal_pack = classify_scalar::policy_pack<
+    classify_scalar::builtin_numeric_policy<','>,
+    classify_scalar::builtin_bool_policy>;
+
+auto value = classify_scalar::classify_scalar("3,14",
+    classify_scalar::classify_only_output(),
+    comma_decimal_pack()); // scalar_float
+```
+
 Policies are ordinary types. A policy provides:
 
 - `matches_leading(unsigned char)`, used to build the compile-time dispatch
   table.
 - `on_dispatch(parse_state&, output&)`, which returns a `ScalarKind`.
+
+Custom policies can use an application enum for their own scalar kinds:
+
+```cpp
+enum class app_scalar_kind : int {
+    telephone = classify_scalar::scalar_custom_begin
+};
+
+return classify_scalar::to_scalar_kind(app_scalar_kind::telephone);
+```
 
 See `tests/test_telephone_policy.cpp` for a complete custom NANP telephone
 number recognizer that returns a user-defined scalar kind while falling through

@@ -4,8 +4,9 @@
 
 namespace {
 
-constexpr classify_scalar::ScalarKind scalar_money =
-    static_cast<classify_scalar::ScalarKind>(classify_scalar::scalar_custom_begin + 1);
+enum class app_scalar_kind : int {
+    money = classify_scalar::scalar_custom_begin
+};
 
 struct money_policy {
     static constexpr bool matches_leading(unsigned char c) noexcept {
@@ -20,7 +21,7 @@ struct money_policy {
                 && state.first[0] == '$'
                 && state.first[1] == '4'
                 && state.first[2] == '2'
-            ? scalar_money
+            ? classify_scalar::to_scalar_kind(app_scalar_kind::money)
             : classify_scalar::scalar_string;
     }
 };
@@ -30,7 +31,7 @@ struct money_policy {
 TEST_CASE("policy packs can add custom leading-byte classifiers") {
     typedef classify_scalar::policy_pack<
         money_policy,
-        classify_scalar::builtin_numeric_policy<true>,
+        classify_scalar::builtin_numeric_policy<>,
         classify_scalar::builtin_bool_policy> pack_type;
 
     const pack_type pack;
@@ -38,7 +39,7 @@ TEST_CASE("policy packs can add custom leading-byte classifiers") {
     CHECK(classify_scalar::classify_scalar(
         "$42",
         classify_scalar::classify_only_output(),
-        pack) == scalar_money);
+        pack) == classify_scalar::to_scalar_kind(app_scalar_kind::money));
 
     CHECK(classify_scalar::classify_scalar(
         "$43",

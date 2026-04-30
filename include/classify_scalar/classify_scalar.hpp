@@ -2,11 +2,9 @@
 
 #include <array>
 #include <cassert>
-#include <cerrno>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <tuple>
@@ -103,6 +101,12 @@ enum ScalarKind : int {
     scalar_custom_begin = 1024
 };
 
+template<typename Enum>
+constexpr typename std::enable_if<std::is_enum<Enum>::value, ScalarKind>::type
+to_scalar_kind(Enum value) noexcept {
+    return static_cast<ScalarKind>(value);
+}
+
 struct scalar_span {
     scalar_span() noexcept : first(nullptr), last(nullptr) {}
     scalar_span(const char* first_, const char* last_) noexcept : first(first_), last(last_) {}
@@ -146,11 +150,11 @@ CLASSIFY_SCALAR_FORCE_INLINE builtin_output_refs output_refs(long double& number
 enum class ParseFlag : unsigned char {
     /// Any byte with no scalar-classification meaning in the active parse table.
     other,
-    /// Decimal point byte '.'.
+    /// Active decimal separator byte, '.' by default.
     decimal,
     /// Exponent marker bytes 'e' and 'E'.
     might_be_exponential,
-    /// Hexadecimal prefix marker bytes 'x' and 'X' when hex recognition is enabled.
+    /// Hexadecimal prefix marker bytes 'x' and 'X'.
     might_be_hex_prefix
 };
 
@@ -167,11 +171,11 @@ CLASSIFY_SCALAR_FORCE_INLINE bool is_ascii_space(const char c) noexcept {
     return table[static_cast<unsigned char>(c)];
 }
 
-template<bool RecognizeHex>
+template<char DecimalSymbol>
 CLASSIFY_SCALAR_CONST CONSTEXPR_14 ParseFlag classify_ascii_char(const unsigned char c) noexcept {
-    return c == '.' ? ParseFlag::decimal
+    return c == static_cast<unsigned char>(DecimalSymbol) ? ParseFlag::decimal
         : c == 'e' || c == 'E' ? ParseFlag::might_be_exponential
-        : RecognizeHex && (c == 'x' || c == 'X') ? ParseFlag::might_be_hex_prefix
+        : c == 'x' || c == 'X' ? ParseFlag::might_be_hex_prefix
         : ParseFlag::other;
 }
 
@@ -332,15 +336,15 @@ struct policy_pack {
     tuple_type policies;
 };
 
-template<bool RecognizeHex, std::size_t... Indexes>
+template<char DecimalSymbol, std::size_t... Indexes>
 CONSTEXPR_14 parse_table_type build_parse_table(index_sequence<Indexes...>) noexcept {
-    return parse_table_type{{classify_ascii_char<RecognizeHex>(static_cast<unsigned char>(Indexes))...}};
+    return parse_table_type{{classify_ascii_char<DecimalSymbol>(static_cast<unsigned char>(Indexes))...}};
 }
 
-template<bool RecognizeHex>
+template<char DecimalSymbol>
 CLASSIFY_SCALAR_FORCE_INLINE const parse_table_type& parse_table() noexcept {
     static CONSTEXPR_VALUE_14 parse_table_type table =
-        build_parse_table<RecognizeHex>(typename make_index_sequence<256>::type());
+        build_parse_table<DecimalSymbol>(typename make_index_sequence<256>::type());
     return table;
 }
 
@@ -631,7 +635,95 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex_integer(
     return parse_integer_digits(state, current, last, 16U, out);
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating(
+CLASSIFY_SCALAR_FORCE_INLINE long double pow10_integer(const int exponent) noexcept {
+    long double value = 1.0L;
+    const long double factor = exponent >= 0 ? 10.0L : 0.1L;
+    const int iterations = exponent >= 0 ? exponent : -exponent;
+    for (int i = 0; i < iterations; ++i)
+        value *= factor;
+
+    return value;
+}
+
+template<char DecimalSymbol>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_ascii(
+    const parse_state& state,
+    double* out) noexcept {
+    const char* current = state.numeric_first;
+    const char* last = state.last;
+    assert(current != last);
+
+    if (state.sign == parse_state::negative_sign)
+        ++current;
+
+    long double parsed = 0.0L;
+    bool has_digit = false;
+
+    while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+        parsed = (parsed * 10.0L) + static_cast<unsigned char>(*current - '0');
+        has_digit = true;
+        ++current;
+    }
+
+    if (current != last && static_cast<unsigned char>(*current) == static_cast<unsigned char>(DecimalSymbol)) {
+        ++current;
+        long double place = 0.1L;
+        while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+            parsed += static_cast<unsigned char>(*current - '0') * place;
+            place *= 0.1L;
+            has_digit = true;
+            ++current;
+        }
+    }
+
+    if (!has_digit)
+        return false;
+
+    if (current != last && (*current == 'e' || *current == 'E')) {
+        ++current;
+        if (current == last)
+            return false;
+
+        bool exponent_negative = false;
+        if (*current == '+' || *current == '-') {
+            exponent_negative = *current == '-';
+            ++current;
+            if (current == last)
+                return false;
+        }
+
+        int exponent = 0;
+        while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+            if (exponent > 500)
+                return false;
+
+            exponent = (exponent * 10) + (*current - '0');
+            ++current;
+        }
+
+        if (current != last)
+            return false;
+
+        parsed *= pow10_integer(exponent_negative ? -exponent : exponent);
+    }
+
+    if (current != last)
+        return false;
+
+    if (state.sign == parse_state::negative_sign)
+        parsed = -parsed;
+
+    const double as_double = static_cast<double>(parsed);
+    if (!std::isfinite(as_double))
+        return false;
+
+    if (out)
+        *out = as_double;
+
+    return true;
+}
+
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_dot(
     const parse_state& state,
     double* out) noexcept {
     const char* first = state.numeric_first;
@@ -652,6 +744,22 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating(
 
     return true;
 #else
+    return parse_floating_ascii<'.'>(state, out);
+#endif
+}
+
+template<char DecimalSymbol>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_with_decimal(
+    const parse_state& state,
+    double* out) noexcept {
+    const char* first = state.numeric_first;
+    const char* last = state.last;
+    const std::size_t size = static_cast<std::size_t>(last - first);
+    assert(first != last);
+    if (size > 4096)
+        return false;
+
+#if CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
     char buffer[4097];
     std::size_t i = 0;
     for (const char* current = first; current != last; ++current, ++i) {
@@ -659,21 +767,31 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating(
         if (is_ascii_space(static_cast<char>(c)))
             return false;
 
-        buffer[i] = static_cast<char>(c);
+        buffer[i] = c == static_cast<unsigned char>(DecimalSymbol) ? '.' : static_cast<char>(c);
     }
     buffer[size] = '\0';
 
-    char* parse_end = nullptr;
-    errno = 0;
-    const long double parsed = std::strtold(buffer, &parse_end);
-    if (parse_end != buffer + size || errno == ERANGE || !std::isfinite(parsed))
+    double parsed = 0;
+    const std::from_chars_result result = std::from_chars(buffer, buffer + size, parsed);
+    if (result.ec != std::errc() || result.ptr != buffer + size || !std::isfinite(parsed))
         return false;
 
     if (out)
-        *out = static_cast<double>(parsed);
+        *out = parsed;
 
     return true;
+#else
+    return parse_floating_ascii<DecimalSymbol>(state, out);
 #endif
+}
+
+template<char DecimalSymbol>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating(
+    const parse_state& state,
+    double* out) noexcept {
+    return DecimalSymbol == '.'
+        ? parse_floating_dot(state, out)
+        : parse_floating_with_decimal<DecimalSymbol>(state, out);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool floating_is_integral(const double value, std::int64_t* out) noexcept {
@@ -725,10 +843,14 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     return scalar_float;
 }
 
-template<bool RecognizeHex = true>
+template<char DecimalSymbol = '.'>
 struct builtin_numeric_policy {
+    static_assert(DecimalSymbol != 'e' && DecimalSymbol != 'E', "decimal symbol cannot be an exponent marker");
+    static_assert(DecimalSymbol != 'x' && DecimalSymbol != 'X', "decimal symbol cannot be a hexadecimal prefix marker");
+    static_assert(DecimalSymbol < '0' || DecimalSymbol > '9', "decimal symbol cannot be an ASCII digit");
+
     CLASSIFY_SCALAR_CONST CONSTEXPR_14 static bool matches_leading(unsigned char c) noexcept {
-        return ascii_digit_value(c) || c == '.' || c == '+' || c == '-';
+        return ascii_digit_value(c) || c == static_cast<unsigned char>(DecimalSymbol) || c == '+' || c == '-';
     }
 
     template<typename Output>
@@ -743,7 +865,7 @@ struct builtin_numeric_policy {
         parse_state& state,
         Output& output) const noexcept {
         double parsed_float = 0;
-        return parse_floating(state, &parsed_float)
+        return parse_floating<DecimalSymbol>(state, &parsed_float)
             ? finish_floating(parsed_float, output)
             : scalar_string;
     }
@@ -756,7 +878,7 @@ struct builtin_numeric_policy {
             return scalar_string;
 
         double parsed_float = 0;
-        return parse_floating(state, &parsed_float)
+        return parse_floating<DecimalSymbol>(state, &parsed_float)
             ? finish_floating(parsed_float, output)
             : scalar_string;
     }
@@ -795,7 +917,7 @@ struct builtin_numeric_policy {
             if (is_ascii_digit(c))
                 continue;
 
-            const ParseFlag flag = parse_table<RecognizeHex>()[c];
+            const ParseFlag flag = parse_table<DecimalSymbol>()[c];
             switch (flag) {
             case ParseFlag::decimal:
                 return on_decimal(state, output);
@@ -833,7 +955,7 @@ struct builtin_numeric_policy {
         }
 
         const unsigned char value_first_char = static_cast<unsigned char>(*value_first);
-        if (value_first_char == '.') {
+        if (value_first_char == static_cast<unsigned char>(DecimalSymbol)) {
             state.current = value_first;
             return on_decimal(state, output);
         }
@@ -896,8 +1018,8 @@ typedef detail::parse_state parse_state;
 template<typename... Policies>
 using policy_pack = detail::policy_pack<Policies...>;
 
-template<bool RecognizeHex = true>
-using builtin_numeric_policy = detail::builtin_numeric_policy<RecognizeHex>;
+template<char DecimalSymbol = '.'>
+using builtin_numeric_policy = detail::builtin_numeric_policy<DecimalSymbol>;
 
 typedef detail::builtin_bool_policy builtin_bool_policy;
 
@@ -905,17 +1027,17 @@ typedef detail::builtin_timestamp_policy builtin_timestamp_policy;
 
 typedef detail::policy_pack<
     detail::builtin_timestamp_policy,
-    detail::builtin_numeric_policy<true>,
+    detail::builtin_numeric_policy<>,
     detail::builtin_bool_policy> builtin_policy_pack;
 
 typedef builtin_policy_pack default_policy_pack;
 
 typedef detail::policy_pack<
-    detail::builtin_numeric_policy<true>,
+    detail::builtin_numeric_policy<>,
     detail::builtin_bool_policy> numeric_bool_policy_pack;
 
 typedef detail::policy_pack<
-    detail::builtin_numeric_policy<true> > numeric_policy_pack;
+    detail::builtin_numeric_policy<> > numeric_policy_pack;
 
 namespace detail {
 

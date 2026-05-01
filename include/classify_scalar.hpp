@@ -265,9 +265,8 @@ struct scalar_span {
 };
 
 struct classify_only_output {
-    void set_integer(std::int64_t) const noexcept {}
-    void set_number(long double) const noexcept {}
-    void set_bool(bool) const noexcept {}
+    template<ScalarKind, typename T>
+    void set(T) const noexcept {}
 };
 
 CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 IntegerKind classify_integer_kind(std::int64_t value) noexcept {
@@ -297,18 +296,21 @@ struct builtin_output_refs {
           boolean(boolean_),
           integer_kind(&integer_kind_) {}
 
-    void set_integer(std::int64_t value) const noexcept {
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_int, void>::type set(std::int64_t value) const noexcept {
         integer = value;
         number = static_cast<long double>(value);
         if (integer_kind)
             *integer_kind = classify_integer_kind(value);
     }
 
-    void set_number(long double value) const noexcept {
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_float, void>::type set(long double value) const noexcept {
         number = value;
     }
 
-    void set_bool(bool value) const noexcept {
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_bool, void>::type set(bool value) const noexcept {
         boolean = value;
     }
 
@@ -824,6 +826,15 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex_integer(
     return parse_integer_digits(state, current, last, 16U, out) == integer_parse_valid;
 }
 
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_bare_hex_integer(
+    const parse_state& state,
+    std::int64_t* out) noexcept {
+    const char* current = state.sign == parse_state::no_sign ? state.first : state.first + 1;
+    const char* last = state.last;
+    assert(current != last);
+    return parse_integer_digits(state, current, last, 16U, out) == integer_parse_valid;
+}
+
 CLASSIFY_SCALAR_FORCE_INLINE long double pow10_integer(const int exponent) noexcept {
     long double value = 1.0L;
     const long double factor = exponent >= 0 ? 10.0L : 0.1L;
@@ -1007,7 +1018,7 @@ template<typename Output>
 CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_integer(
     const std::int64_t parsed_integer,
     Output& output) noexcept {
-    output.set_integer(parsed_integer);
+    output.template set<scalar_int>(parsed_integer);
     return scalar_int;
 }
 
@@ -1030,7 +1041,7 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     if (floating_is_integral(parsed_float, &parsed_integer))
         return finish_integer(parsed_integer, output);
 
-    output.set_number(parsed_float);
+        output.template set<scalar_float>(parsed_float);
     return scalar_float;
 }
 
@@ -1047,7 +1058,7 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     std::false_type,
     const double parsed_float,
     Output& output) noexcept {
-    output.set_number(parsed_float);
+    output.template set<scalar_float>(parsed_float);
     return scalar_float;
 }
 
@@ -1202,7 +1213,7 @@ struct builtin_bool_policy {
         if (!(parse_true(state.first, state.last, &parsed) || parse_false(state.first, state.last, &parsed)))
             return scalar_string;
 
-        output.set_bool(parsed);
+        output.template set<scalar_bool>(parsed);
         return scalar_bool;
     }
 };
@@ -1237,6 +1248,37 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_leading_dispatch(
 
 typedef detail::parse_state parse_state;
 
+namespace detail {
+
+CLASSIFY_SCALAR_FORCE_INLINE scalar_span validated_trimmed_span(
+    const char* first,
+    const char* last,
+    const bool trim) noexcept {
+    if (!first || !last || last < first)
+        return scalar_span();
+
+    return trim
+        ? trim_ascii(first, last)
+        : scalar_span(first, last);
+}
+
+CLASSIFY_SCALAR_FORCE_INLINE parse_state make_numeric_parse_state(
+    const scalar_span span) noexcept {
+    parse_state state(span.first, span.last);
+    if (span.first != span.last && (*span.first == '+' || *span.first == '-')) {
+        state.sign = *span.first == '-'
+            ? parse_state::negative_sign
+            : parse_state::positive_sign;
+        state.numeric_first = state.sign == parse_state::negative_sign
+            ? span.first
+            : span.first + 1;
+    }
+
+    return state;
+}
+
+} // namespace detail
+
 template<typename... Policies>
 using policy_pack = detail::policy_pack<Policies...>;
 
@@ -1261,23 +1303,6 @@ typedef detail::policy_pack<
 typedef detail::policy_pack<
     detail::builtin_numeric_policy<> > numeric_policy_pack;
 
-namespace detail {
-
-template<
-    typename Kind,
-    typename Output,
-    typename PolicyPack>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar_trimmed(
-    const char* first,
-    const char* last,
-    Output& output,
-    const PolicyPack& policies) noexcept {
-    return first == last ? scalar_kind_cast<Kind>(scalar_null) :
-        classify_leading_dispatch<Kind>(first, last, output, policies);
-}
-
-} // namespace detail
-
 template<
     typename Kind = ScalarKind,
     bool TrimAsciiWhitespace = true,
@@ -1295,97 +1320,8 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
         ? detail::trim_ascii(first, last)
         : scalar_span{first, last};
 
-    return detail::classify_scalar_trimmed<Kind>(
-        span.first,
-        span.last,
-        output,
-        policy);
-}
-
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    typename Output = classify_only_output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_numeric_scalar(
-    const char* first,
-    const char* last,
-    Output output = Output()) noexcept {
-    return classify_scalar<Kind, TrimAsciiWhitespace>(
-        first,
-        last,
-        output,
-        numeric_policy_pack());
-}
-
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    typename Output = classify_only_output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_numeric_scalar_with_decimal_symbol(
-    const char* first,
-    const char* last,
-    const char decimal_symbol,
-    Output output = Output()) noexcept {
-    if (decimal_symbol == '.')
-        return classify_numeric_scalar<Kind, TrimAsciiWhitespace>(first, last, output);
-
-    if (decimal_symbol == ',') {
-        typedef policy_pack<builtin_numeric_policy<','> > comma_numeric_policy_pack;
-        return classify_scalar<Kind, TrimAsciiWhitespace>(
-            first,
-            last,
-            output,
-            comma_numeric_policy_pack());
-    }
-
-    return detail::scalar_kind_cast<Kind>(scalar_invalid);
-}
-
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    std::size_t Size,
-    typename Output = classify_only_output,
-    typename Policy = default_policy_pack>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
-    const char (&value)[Size],
-    Output output = Output(),
-    Policy policy = Policy()) noexcept {
-    return classify_scalar<Kind, TrimAsciiWhitespace>(
-        value,
-        value + Size - 1,
-        output,
-        policy);
-}
-
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    std::size_t Size,
-    typename Output = classify_only_output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_numeric_scalar(
-    const char (&value)[Size],
-    Output output = Output()) noexcept {
-    return classify_numeric_scalar<Kind, TrimAsciiWhitespace>(
-        value,
-        value + Size - 1,
-        output);
-}
-
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    std::size_t Size,
-    typename Output = classify_only_output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_numeric_scalar_with_decimal_symbol(
-    const char (&value)[Size],
-    const char decimal_symbol,
-    Output output = Output()) noexcept {
-    return classify_numeric_scalar_with_decimal_symbol<Kind, TrimAsciiWhitespace>(
-        value,
-        value + Size - 1,
-        decimal_symbol,
-        output);
+    return span.first == span.last ? detail::scalar_kind_cast<Kind>(scalar_null) :
+        detail::classify_leading_dispatch<Kind>(span.first, span.last, output, policy);
 }
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX17
@@ -1408,40 +1344,163 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
         policy);
 }
 
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    typename Output = classify_only_output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_numeric_scalar(
-    std::string_view value,
-    Output output = Output()) noexcept {
-    if (value.empty())
-        return detail::scalar_kind_cast<Kind>(scalar_null);
+#endif
 
-    return classify_numeric_scalar<Kind, TrimAsciiWhitespace>(
-        value.data(),
-        value.data() + value.size(),
-        output);
+template<bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
+    const char* first,
+    const char* last,
+    std::int64_t& out) noexcept {
+    const scalar_span span = detail::validated_trimmed_span(first, last, TrimAsciiWhitespace);
+    if (span.first == span.last)
+        return false;
+
+    detail::parse_state state = detail::make_numeric_parse_state(span);
+    const char* current = state.sign == detail::parse_state::no_sign ? state.first : state.first + 1;
+    if (current == state.last)
+        return false;
+
+    if (current + 2 <= state.last && current[0] == '0' && (current[1] == 'x' || current[1] == 'X')) {
+        state.current = current + 1;
+        return detail::parse_hex_integer(state, &out);
+    }
+
+    return detail::parse_bare_hex_integer(state, &out);
 }
 
-template<
-    typename Kind = ScalarKind,
-    bool TrimAsciiWhitespace = true,
-    typename Output = classify_only_output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_numeric_scalar_with_decimal_symbol(
-    std::string_view value,
-    const char decimal_symbol,
-    Output output = Output()) noexcept {
-    if (value.empty())
-        return detail::scalar_kind_cast<Kind>(scalar_null);
+namespace detail {
 
-    return classify_numeric_scalar_with_decimal_symbol<Kind, TrimAsciiWhitespace>(
-        value.data(),
-        value.data() + value.size(),
-        decimal_symbol,
-        output);
+template<ScalarKind Kind>
+struct scalar_home;
+
+template<>
+struct scalar_home<scalar_bool> {
+    typedef bool type;
+    typedef policy_pack<builtin_bool_policy> policy;
+};
+
+template<>
+struct scalar_home<scalar_int> {
+    typedef std::int64_t type;
+    typedef numeric_policy_pack policy;
+};
+
+template<>
+struct scalar_home<scalar_float> {
+    typedef double type;
+    typedef numeric_policy_pack policy;
+};
+
+template<>
+struct scalar_home<scalar_timestamp> {
+    typedef policy_pack<builtin_timestamp_policy> policy;
+};
+
+template<>
+struct scalar_home<scalar_bigint> {
+    typedef numeric_policy_pack policy;
+};
+
+struct parse_scalar_storage {
+    long double number = 0;
+    std::int64_t integer = 0;
+    bool boolean = false;
+
+    builtin_output_refs refs() noexcept {
+        return output_refs(number, integer, boolean);
+    }
+};
+
+template<ScalarKind Kind>
+struct parse_scalar_value;
+
+template<>
+struct parse_scalar_value<scalar_bool> {
+    static bool get(const parse_scalar_storage& storage) noexcept {
+        return storage.boolean;
+    }
+};
+
+template<>
+struct parse_scalar_value<scalar_int> {
+    static std::int64_t get(const parse_scalar_storage& storage) noexcept {
+        return storage.integer;
+    }
+};
+
+template<>
+struct parse_scalar_value<scalar_float> {
+    static double get(const parse_scalar_storage& storage) noexcept {
+        return static_cast<double>(storage.number);
+    }
+};
+
+template<ScalarKind Kind, bool TrimAsciiWhitespace>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar_with_output(
+    const char* first,
+    const char* last,
+    typename scalar_home<Kind>::type& output) noexcept {
+    parse_scalar_storage storage;
+    const ScalarKind kind = classify_scalar<ScalarKind, TrimAsciiWhitespace>(
+        first,
+        last,
+        storage.refs(),
+        typename scalar_home<Kind>::policy());
+    if (kind != Kind && !(Kind == scalar_float && kind == scalar_int))
+        return false;
+
+    output = parse_scalar_value<Kind>::get(storage);
+    return true;
 }
 
+} // namespace detail
+
+template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
+    const char* first,
+    const char* last,
+    typename detail::scalar_home<Kind>::type& out) noexcept {
+    return detail::parse_scalar_with_output<Kind, TrimAsciiWhitespace>(first, last, out);
+}
+
+template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<Kind == scalar_timestamp || Kind == scalar_bigint, bool>::type parse_scalar(
+    const char* first,
+    const char* last) noexcept {
+    return classify_scalar<ScalarKind, TrimAsciiWhitespace>(
+        first,
+        last,
+        classify_only_output(),
+        typename detail::scalar_home<Kind>::policy()) == Kind;
+}
+
+template<bool TrimAsciiWhitespace = true, std::size_t Size>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
+    const char (&value)[Size],
+    std::int64_t& out) noexcept {
+    return parse_hex<TrimAsciiWhitespace>(value, value + Size - 1, out);
+}
+
+#ifdef CLASSIFY_SCALAR_HAS_CXX17
+template<bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
+    std::string_view value,
+    std::int64_t& out) noexcept {
+    return parse_hex<TrimAsciiWhitespace>(value.data(), value.data() + value.size(), out);
+}
+
+template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
+    std::string_view value,
+    typename detail::scalar_home<Kind>::type& out) noexcept {
+    return parse_scalar<Kind, TrimAsciiWhitespace>(value.data(), value.data() + value.size(), out);
+}
+
+template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<Kind == scalar_timestamp || Kind == scalar_bigint, bool>::type parse_scalar(
+    std::string_view value) noexcept {
+    return parse_scalar<Kind, TrimAsciiWhitespace>(value.data(), value.data() + value.size());
+}
 #endif
 
 } // namespace classify_scalar

@@ -14,7 +14,10 @@ TEST_CASE("classifies hexadecimal integers") {
 
     CHECK(classify_scalar::classify_scalar("0x10", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
     CHECK(integer == 16);
-    CHECK(classify_scalar::classify_numeric_scalar("0x10") == scalar_int);
+    CHECK(classify_scalar::classify_scalar(
+        "0x10",
+        classify_scalar::classify_only_output(),
+        classify_scalar::numeric_policy_pack()) == scalar_int);
 
     CHECK(classify_scalar::classify_scalar("0x1e", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
     CHECK(integer == 30);

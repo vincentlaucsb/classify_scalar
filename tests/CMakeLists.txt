@@ -23,6 +23,7 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
         test_null_string_trim.cpp
         test_numeric_only.cpp
         test_outputs.cpp
+        test_parse_scalar.cpp
         test_policy_pack.cpp
         test_telephone_policy.cpp
         test_timestamp.cpp)

@@ -478,9 +478,10 @@ std::int64_t parse_int_classify_scalar(std::string_view value) {
     long double number = 0;
     std::int64_t integer = 0;
     bool boolean = false;
-    const auto kind = classify_scalar::classify_numeric_scalar<classify_scalar::ScalarKind, false>(
+    const auto kind = classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>(
         value,
-        classify_scalar::output_refs(number, integer, boolean));
+        classify_scalar::output_refs(number, integer, boolean),
+        classify_scalar::numeric_policy_pack());
 
     return kind == classify_scalar::scalar_int ? integer : 0;
 }
@@ -497,9 +498,10 @@ double parse_float_classify_scalar(std::string_view value) {
     long double number = 0;
     std::int64_t integer = 0;
     bool boolean = false;
-    const auto kind = classify_scalar::classify_numeric_scalar<classify_scalar::ScalarKind, false>(
+    const auto kind = classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>(
         value,
-        classify_scalar::output_refs(number, integer, boolean));
+        classify_scalar::output_refs(number, integer, boolean),
+        classify_scalar::numeric_policy_pack());
 
     return kind == classify_scalar::scalar_float || kind == classify_scalar::scalar_int
         ? static_cast<double>(number)

@@ -36,12 +36,20 @@ from csv-parser/csvzall scalar inference work.
   APIs and implementation helpers. C++17 may expose thin `std::string_view`
   convenience overloads at the public boundary only. Never store view types in
   persistent data structures.
+- Treat classify_scalar as a runtime classifier first. Use compile-time
+  machinery where it pays for hot-path behavior, such as policy composition,
+  ASCII/dispatch tables, and C++20 diagnostics. Avoid compile-time bloat for
+  convenience-only APIs, clever type plumbing, or overloads that users can
+  trivially write themselves around the pointer-span core.
 
 ## Scalar Inference Contract
 
 - Classify well-formed scalar literals after optional ASCII-boundary trimming.
 - Do not repair arbitrary internal whitespace or normalize malformed domain
   strings.
+- Keep conservative inference separate from explicit parsing helpers.
+  `classify_scalar` should avoid surprising guesses such as bare hex, while
+  `parse_scalar<kind>` may accept a specific grammar directly.
 - Boundary trimming is enabled by default. Internal parser helpers should receive
   the trimmed pointer span.
 - Keep the common numeric path cheap. Classification without storage should use

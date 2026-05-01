@@ -65,6 +65,38 @@ auto kind = classify_scalar::classify_scalar(
 // integer_kind == integer_int8
 ```
 
+## Explicit Parsing
+
+Use `classify_scalar(...)` when you want conservative inference. Use
+`parse_scalar<kind>(...)` for built-in kinds when you already know which grammar
+you want:
+
+```cpp
+std::int64_t hex = 0;
+bool ok = classify_scalar::parse_hex("DEADBEEF", hex);
+// ok == true
+// hex == 0xDEADBEEF
+// classify_scalar("DEADBEEF") would still be scalar_string
+
+double number = 0;
+const char* float_first = "1e-3";
+classify_scalar::parse_scalar<classify_scalar::scalar_float>(
+    float_first,
+    float_first + 4,
+    number);
+
+const char* timestamp = "2024-01-31T23:59:58Z";
+bool is_timestamp =
+    classify_scalar::parse_scalar<classify_scalar::scalar_timestamp>(
+        timestamp,
+        timestamp + 20);
+```
+
+`parse_scalar<scalar_int>` reuses the normal numeric classifier. Use `parse_hex`
+when bare hexadecimal should be accepted explicitly without making inference
+classify `DEADBEEF` as an integer. The parser supports optional
+ASCII-boundary trimming through its second template argument.
+
 ## Extending the Classifier/Parser
 
 To add a custom scalar type, define:
@@ -171,12 +203,13 @@ auto no_bools = classify_scalar::classify_scalar(
     no_bool_pack());
 ```
 
-For numeric-only inference, use `numeric_policy_pack` or the convenience
-wrappers:
+For numeric-only inference, pass `numeric_policy_pack`:
 
 ```cpp
-auto kind = classify_scalar::classify_numeric_scalar("2024-01-31"); // scalar_string
-auto num = classify_scalar::classify_numeric_scalar("3.14");        // scalar_float
+auto kind = classify_scalar::classify_scalar(
+    "2024-01-31",
+    classify_scalar::classify_only_output(),
+    classify_scalar::numeric_policy_pack()); // scalar_string
 ```
 
 The built-in numeric policy recognizes hexadecimal integers by default. Its
@@ -192,14 +225,21 @@ auto value = classify_scalar::classify_scalar("3,14",
     comma_decimal_pack()); // scalar_float
 ```
 
-For runtime decimal symbols, the built-in helper dispatches the common dot and
-comma cases without making callers duplicate numeric parsing:
+For runtime decimal symbols, keep the dispatch at your integration boundary:
 
 ```cpp
-auto value = classify_scalar::classify_numeric_scalar_with_decimal_symbol(
-    first,
-    last,
-    decimal_symbol);
+switch (decimal_symbol) {
+case '.':
+    return classify_scalar::classify_scalar(first, last);
+case ',':
+    return classify_scalar::classify_scalar(
+        first,
+        last,
+        classify_scalar::classify_only_output(),
+        comma_decimal_pack());
+default:
+    return classify_scalar::scalar_invalid;
+}
 ```
 
 The default numeric policy returns `scalar_int` for integral-valued floating

@@ -70,8 +70,12 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     CHECK(timestamp == 1706745598123ULL);
     CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58+07:30", timestamp));
     CHECK(timestamp == 1706718598000ULL);
+    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58+0730", timestamp));
+    CHECK(timestamp == 1706718598000ULL);
     CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58-05:00", timestamp));
     CHECK(timestamp == 1706763598000ULL);
+    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2021-04-05T10:14:57-0600", timestamp));
+    CHECK(timestamp == 1617639297000ULL);
     CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("1969-12-31T23:59:59Z", timestamp));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("2024-13-31", timestamp));
 

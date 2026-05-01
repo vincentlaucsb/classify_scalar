@@ -811,13 +811,18 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_iso_timestamp(
                     return false;
 
                 timezone_sign = *current == '+' ? 1 : -1;
-                if (current + 6 != last || current[3] != ':')
+                if (current + 6 == last && current[3] == ':') {
+                    if (!parse_digits<2>(current + 1, timezone_hour) || !parse_digits<2>(current + 4, timezone_minute))
+                        return false;
+                    current = last;
+                } else if (current + 5 == last) {
+                    if (!parse_digits<2>(current + 1, timezone_hour) || !parse_digits<2>(current + 3, timezone_minute))
+                        return false;
+                    current = last;
+                } else {
                     return false;
+                }
 
-                if (!parse_digits<2>(current + 1, timezone_hour) || !parse_digits<2>(current + 4, timezone_minute))
-                    return false;
-
-                current = last;
                 if (timezone_hour > 23 || timezone_minute > 59)
                     return false;
             }

@@ -19,6 +19,8 @@ TEST_CASE("classifies ISO date-time timestamps") {
     CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58.123") == scalar_timestamp);
     CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58Z") == scalar_timestamp);
     CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+07:30") == scalar_timestamp);
+    CHECK(classify_scalar::classify_scalar("2021-04-05T10:14:57-0600") == scalar_timestamp);
+    CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+0730") == scalar_timestamp);
     CHECK(classify_scalar::classify_scalar("2024-01-31t23:59:58z") == scalar_timestamp);
 }
 
@@ -30,6 +32,10 @@ TEST_CASE("malformed ISO timestamps fall back to string") {
     CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:60") == scalar_string);
     CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58.") == scalar_string);
     CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+24:00") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+2400") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+0760") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+07") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("2024-01-31T23:59:58+07:3") == scalar_string);
 }
 
 TEST_CASE("timestamp policy falls through to numeric parsing") {

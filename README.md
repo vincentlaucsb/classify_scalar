@@ -36,7 +36,11 @@ auto fractional_exp = classify_scalar("1e-3");        // scalar_float
 
 auto date = classify_scalar("2024-01-31");            // scalar_timestamp
 auto datetime = classify_scalar("2024-01-31T23:59:58Z"); // scalar_timestamp
+auto offset = classify_scalar("2021-04-05T10:14:57-0600"); // scalar_timestamp
 ```
+
+Timestamp offsets may use either `Z`, `+HH:MM`/`-HH:MM`, or compact
+`+HHMM`/`-HHMM` forms.
 
 ASCII boundary whitespace is trimmed by default:
 

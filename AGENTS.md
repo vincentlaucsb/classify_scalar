@@ -41,6 +41,11 @@ from csv-parser/csvzall scalar inference work.
   ASCII/dispatch tables, and C++20 diagnostics. Avoid compile-time bloat for
   convenience-only APIs, clever type plumbing, or overloads that users can
   trivially write themselves around the pointer-span core.
+- Avoid tiny internal helper functions that are only called once, especially in
+  the public header. A helper should usually earn its existence by being reused,
+  isolating genuinely tricky behavior, improving testability, or keeping a
+  hot-path function readable. If the helper body is shorter than its signature
+  and has one caller, inline it unless there is a clear semantic reason not to.
 
 ## Scalar Inference Contract
 

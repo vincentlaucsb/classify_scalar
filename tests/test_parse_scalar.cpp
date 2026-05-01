@@ -15,15 +15,13 @@ static_assert(std::is_same<
 static_assert(std::is_same<
     classify_scalar::detail::scalar_home<classify_scalar::scalar_float>::type,
     double>::value, "scalar_float parses to double");
+static_assert(std::is_same<
+    classify_scalar::detail::scalar_home<classify_scalar::scalar_timestamp>::type,
+    std::uint64_t>::value, "scalar_timestamp parses to UTC unix milliseconds");
 
 template<classify_scalar::ScalarKind Kind, std::size_t Size, typename Output>
 bool parse_literal(const char (&value)[Size], Output& out) {
     return classify_scalar::parse_scalar<Kind>(value, value + Size - 1, out);
-}
-
-template<classify_scalar::ScalarKind Kind, std::size_t Size>
-bool parse_literal(const char (&value)[Size]) {
-    return classify_scalar::parse_scalar<Kind>(value, value + Size - 1);
 }
 
 TEST_CASE("explicit hex parsing accepts bare hexadecimal") {
@@ -49,6 +47,7 @@ TEST_CASE("explicit hex parsing accepts bare hexadecimal") {
 TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     bool boolean = false;
     std::int64_t integer = 0;
+    std::uint64_t timestamp = 0;
     double floating = 0;
 
     CHECK(parse_literal<classify_scalar::scalar_bool>("TRUE", boolean));
@@ -56,13 +55,20 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     CHECK(parse_literal<classify_scalar::scalar_bool>("false", boolean));
     CHECK_FALSE(boolean);
 
-    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58Z"));
-    CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("2024-13-31"));
-
     CHECK(parse_literal<classify_scalar::scalar_int>("-42", integer));
     CHECK(integer == -42);
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int>("9223372036854775808", integer));
-    CHECK(parse_literal<classify_scalar::scalar_bigint>("9223372036854775808"));
+
+    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31", timestamp));
+    CHECK(timestamp == 1706659200000ULL);
+    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58.123Z", timestamp));
+    CHECK(timestamp == 1706745598123ULL);
+    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58+07:30", timestamp));
+    CHECK(timestamp == 1706718598000ULL);
+    CHECK(parse_literal<classify_scalar::scalar_timestamp>("2024-01-31T23:59:58-05:00", timestamp));
+    CHECK(timestamp == 1706763598000ULL);
+    CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("1969-12-31T23:59:59Z", timestamp));
+    CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("2024-13-31", timestamp));
 
     CHECK(parse_literal<classify_scalar::scalar_float>("1e-3", floating));
     CHECK(floating == Catch::Approx(0.001));

@@ -284,7 +284,7 @@ CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 IntegerKind classify_integer_
 
 struct builtin_output_refs {
     builtin_output_refs(long double& number_, std::int64_t& integer_, bool& boolean_) noexcept
-        : number(number_), integer(integer_), boolean(boolean_), integer_kind(nullptr) {}
+        : number(number_), integer(integer_), boolean(boolean_), integer_kind(nullptr), timestamp(nullptr) {}
 
     builtin_output_refs(
         long double& number_,
@@ -294,7 +294,19 @@ struct builtin_output_refs {
         : number(number_),
           integer(integer_),
           boolean(boolean_),
-          integer_kind(&integer_kind_) {}
+          integer_kind(&integer_kind_),
+          timestamp(nullptr) {}
+
+    builtin_output_refs(
+        long double& number_,
+        std::int64_t& integer_,
+        bool& boolean_,
+        std::uint64_t& timestamp_) noexcept
+        : number(number_),
+          integer(integer_),
+          boolean(boolean_),
+          integer_kind(nullptr),
+          timestamp(&timestamp_) {}
 
     template<ScalarKind Kind>
     typename std::enable_if<Kind == scalar_int, void>::type set(std::int64_t value) const noexcept {
@@ -314,10 +326,17 @@ struct builtin_output_refs {
         boolean = value;
     }
 
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_timestamp, void>::type set(std::uint64_t value) const noexcept {
+        if (timestamp)
+            *timestamp = value;
+    }
+
     long double& number;
     std::int64_t& integer;
     bool& boolean;
     IntegerKind* integer_kind;
+    std::uint64_t* timestamp;
 };
 
 CLASSIFY_SCALAR_FORCE_INLINE builtin_output_refs output_refs(long double& number, std::int64_t& integer, bool& boolean) noexcept {
@@ -657,31 +676,20 @@ CLASSIFY_SCALAR_FORCE_INLINE bool valid_iso_date(const int year, const int month
         day >= 1 && day <= days_in_month(year, month);
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE bool consume_iso_timezone(const char*& current, const char* last) noexcept {
-    if (current == last)
-        return true;
-
-    if (ascii_lower_char(static_cast<unsigned char>(*current)) == 'z') {
-        ++current;
-        return current == last;
-    }
-
-    if (*current != '+' && *current != '-')
-        return false;
-
-    if (current + 6 != last || current[3] != ':')
-        return false;
-
-    int hour = 0;
-    int minute = 0;
-    if (!parse_digits<2>(current + 1, hour) || !parse_digits<2>(current + 4, minute))
-        return false;
-
-    current = last;
-    return hour <= 23 && minute <= 59;
+CLASSIFY_SCALAR_FORCE_INLINE std::int64_t days_from_civil(int year, const int month, const int day) noexcept {
+    year -= month <= 2;
+    const std::int64_t era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(year - era * 400);
+    const unsigned doy = (153U * static_cast<unsigned>(month + (month > 2 ? -3 : 9)) + 2U) / 5U
+        + static_cast<unsigned>(day) - 1U;
+    const unsigned doe = yoe * 365U + yoe / 4U - yoe / 100U + doy;
+    return era * 146097 + static_cast<std::int64_t>(doe) - 719468;
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE bool parse_iso_timestamp(const char* first, const char* last) noexcept {
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_iso_timestamp(
+    const char* first,
+    const char* last,
+    std::uint64_t* out = nullptr) noexcept {
     if (last - first < 10)
         return false;
 
@@ -697,48 +705,99 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_iso_timestamp(const char* first, const c
     if (!valid_iso_date(year, month, day))
         return false;
 
-    const char* current = first + 10;
-    if (current == last)
-        return true;
-
-    if (ascii_lower_char(static_cast<unsigned char>(*current)) != 't')
-        return false;
-
-    ++current;
-    if (current + 5 > last || current[2] != ':')
-        return false;
-
     int hour = 0;
     int minute = 0;
-    if (!parse_digits<2>(current, hour) || !parse_digits<2>(current + 3, minute))
-        return false;
+    int second = 0;
+    int millisecond = 0;
+    int timezone_sign = 0;
+    int timezone_hour = 0;
+    int timezone_minute = 0;
+    const char* current = first + 10;
+    if (current != last) {
+        if (ascii_lower_char(static_cast<unsigned char>(*current)) != 't')
+            return false;
 
-    if (hour > 23 || minute > 59)
-        return false;
-
-    current += 5;
-    if (current != last && *current == ':') {
         ++current;
-        if (current + 2 > last)
+        if (current + 5 > last || current[2] != ':')
             return false;
 
-        int second = 0;
-        if (!parse_digits<2>(current, second) || second > 59)
+        if (!parse_digits<2>(current, hour) || !parse_digits<2>(current + 3, minute))
             return false;
 
-        current += 2;
-        if (current != last && *current == '.') {
+        if (hour > 23 || minute > 59)
+            return false;
+
+        current += 5;
+        if (current != last && *current == ':') {
             ++current;
-            const char* fraction_first = current;
-            while (current != last && is_ascii_digit(static_cast<unsigned char>(*current)))
-                ++current;
-
-            if (current == fraction_first)
+            if (current + 2 > last)
                 return false;
+
+            if (!parse_digits<2>(current, second) || second > 59)
+                return false;
+
+            current += 2;
+            if (current != last && *current == '.') {
+                ++current;
+                const char* fraction_first = current;
+                while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+                    if (current - fraction_first < 3)
+                        millisecond = millisecond * 10 + (*current - '0');
+                    ++current;
+                }
+
+                if (current == fraction_first)
+                    return false;
+
+                for (std::ptrdiff_t digits = current - fraction_first; digits < 3; ++digits)
+                    millisecond *= 10;
+            }
         }
+
+        if (current != last) {
+            if (ascii_lower_char(static_cast<unsigned char>(*current)) == 'z') {
+                ++current;
+            } else {
+                if (*current != '+' && *current != '-')
+                    return false;
+
+                timezone_sign = *current == '+' ? 1 : -1;
+                if (current + 6 != last || current[3] != ':')
+                    return false;
+
+                if (!parse_digits<2>(current + 1, timezone_hour) || !parse_digits<2>(current + 4, timezone_minute))
+                    return false;
+
+                current = last;
+                if (timezone_hour > 23 || timezone_minute > 59)
+                    return false;
+            }
+        }
+
+        if (current != last)
+            return false;
     }
 
-    return consume_iso_timezone(current, last);
+    if (!out)
+        return true;
+
+    const std::int64_t timezone_offset_milliseconds =
+        static_cast<std::int64_t>(timezone_sign)
+        * (static_cast<std::int64_t>(timezone_hour) * 60 + timezone_minute)
+        * 60 * 1000;
+    const std::int64_t timestamp =
+        days_from_civil(year, month, day) * 86400000
+        + static_cast<std::int64_t>(hour) * 3600000
+        + static_cast<std::int64_t>(minute) * 60000
+        + static_cast<std::int64_t>(second) * 1000
+        + millisecond
+        - timezone_offset_milliseconds;
+
+    if (timestamp < 0)
+        return false;
+
+    *out = static_cast<std::uint64_t>(timestamp);
+    return true;
 }
 
 CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::int64_t int64_min_value = std::numeric_limits<std::int64_t>::min();
@@ -1008,12 +1067,6 @@ CLASSIFY_SCALAR_FORCE_INLINE bool floating_is_integral(const double value, std::
     return true;
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_integer(
-    const std::int64_t,
-    classify_only_output&) noexcept {
-    return scalar_int;
-}
-
 template<typename Output>
 CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_integer(
     const std::int64_t parsed_integer,
@@ -1041,15 +1094,7 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     if (floating_is_integral(parsed_float, &parsed_integer))
         return finish_integer(parsed_integer, output);
 
-        output.template set<scalar_float>(parsed_float);
-    return scalar_float;
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
-    std::false_type,
-    const double parsed_float,
-    classify_only_output&) noexcept {
-    (void)parsed_float;
+    output.template set<scalar_float>(parsed_float);
     return scalar_float;
 }
 
@@ -1226,58 +1271,19 @@ struct builtin_timestamp_policy {
     template<typename Output>
     CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_dispatch(
         parse_state& state,
-        Output&) const noexcept {
-        return parse_iso_timestamp(state.first, state.last)
-            ? scalar_timestamp
-            : scalar_string;
+        Output& output) const noexcept {
+        std::uint64_t timestamp = 0;
+        if (!parse_iso_timestamp(state.first, state.last, &timestamp))
+            return scalar_string;
+
+        output.template set<scalar_timestamp>(timestamp);
+        return scalar_timestamp;
     }
 };
-
-template<typename Kind, typename PolicyPack, typename Output>
-CLASSIFY_SCALAR_FORCE_INLINE Kind classify_leading_dispatch(
-    const char* first,
-    const char* last,
-    Output& output,
-    const PolicyPack& policies) noexcept {
-    parse_state state(first, last);
-    const unsigned char policy_index = dispatch_table<PolicyPack>()[static_cast<unsigned char>(*first)];
-    return policies.template dispatch<Kind>(policy_index, state, output);
-}
 
 } // namespace detail
 
 typedef detail::parse_state parse_state;
-
-namespace detail {
-
-CLASSIFY_SCALAR_FORCE_INLINE scalar_span validated_trimmed_span(
-    const char* first,
-    const char* last,
-    const bool trim) noexcept {
-    if (!first || !last || last < first)
-        return scalar_span();
-
-    return trim
-        ? trim_ascii(first, last)
-        : scalar_span(first, last);
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE parse_state make_numeric_parse_state(
-    const scalar_span span) noexcept {
-    parse_state state(span.first, span.last);
-    if (span.first != span.last && (*span.first == '+' || *span.first == '-')) {
-        state.sign = *span.first == '-'
-            ? parse_state::negative_sign
-            : parse_state::positive_sign;
-        state.numeric_first = state.sign == parse_state::negative_sign
-            ? span.first
-            : span.first + 1;
-    }
-
-    return state;
-}
-
-} // namespace detail
 
 template<typename... Policies>
 using policy_pack = detail::policy_pack<Policies...>;
@@ -1320,8 +1326,14 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
         ? detail::trim_ascii(first, last)
         : scalar_span{first, last};
 
-    return span.first == span.last ? detail::scalar_kind_cast<Kind>(scalar_null) :
-        detail::classify_leading_dispatch<Kind>(span.first, span.last, output, policy);
+    if (span.first == span.last)
+        return detail::scalar_kind_cast<Kind>(scalar_null);
+
+    detail::parse_state state(span.first, span.last);
+    return policy.template dispatch<Kind>(
+        detail::dispatch_table<Policy>()[static_cast<unsigned char>(*span.first)],
+        state,
+        output);
 }
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX17
@@ -1351,11 +1363,25 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
     const char* first,
     const char* last,
     std::int64_t& out) noexcept {
-    const scalar_span span = detail::validated_trimmed_span(first, last, TrimAsciiWhitespace);
+    if (!first || !last || last < first)
+        return false;
+
+    const scalar_span span = TrimAsciiWhitespace
+        ? detail::trim_ascii(first, last)
+        : scalar_span(first, last);
     if (span.first == span.last)
         return false;
 
-    detail::parse_state state = detail::make_numeric_parse_state(span);
+    detail::parse_state state(span.first, span.last);
+    if (*span.first == '+' || *span.first == '-') {
+        state.sign = *span.first == '-'
+            ? detail::parse_state::negative_sign
+            : detail::parse_state::positive_sign;
+        state.numeric_first = state.sign == detail::parse_state::negative_sign
+            ? span.first
+            : span.first + 1;
+    }
+
     const char* current = state.sign == detail::parse_state::no_sign ? state.first : state.first + 1;
     if (current == state.last)
         return false;
@@ -1393,22 +1419,15 @@ struct scalar_home<scalar_float> {
 
 template<>
 struct scalar_home<scalar_timestamp> {
+    typedef std::uint64_t type;
     typedef policy_pack<builtin_timestamp_policy> policy;
-};
-
-template<>
-struct scalar_home<scalar_bigint> {
-    typedef numeric_policy_pack policy;
 };
 
 struct parse_scalar_storage {
     long double number = 0;
     std::int64_t integer = 0;
+    std::uint64_t timestamp = 0;
     bool boolean = false;
-
-    builtin_output_refs refs() noexcept {
-        return output_refs(number, integer, boolean);
-    }
 };
 
 template<ScalarKind Kind>
@@ -1435,6 +1454,13 @@ struct parse_scalar_value<scalar_float> {
     }
 };
 
+template<>
+struct parse_scalar_value<scalar_timestamp> {
+    static std::uint64_t get(const parse_scalar_storage& storage) noexcept {
+        return storage.timestamp;
+    }
+};
+
 template<ScalarKind Kind, bool TrimAsciiWhitespace>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar_with_output(
     const char* first,
@@ -1444,7 +1470,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar_with_output(
     const ScalarKind kind = classify_scalar<ScalarKind, TrimAsciiWhitespace>(
         first,
         last,
-        storage.refs(),
+        builtin_output_refs(storage.number, storage.integer, storage.boolean, storage.timestamp),
         typename scalar_home<Kind>::policy());
     if (kind != Kind && !(Kind == scalar_float && kind == scalar_int))
         return false;
@@ -1463,24 +1489,6 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
     return detail::parse_scalar_with_output<Kind, TrimAsciiWhitespace>(first, last, out);
 }
 
-template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
-CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<Kind == scalar_timestamp || Kind == scalar_bigint, bool>::type parse_scalar(
-    const char* first,
-    const char* last) noexcept {
-    return classify_scalar<ScalarKind, TrimAsciiWhitespace>(
-        first,
-        last,
-        classify_only_output(),
-        typename detail::scalar_home<Kind>::policy()) == Kind;
-}
-
-template<bool TrimAsciiWhitespace = true, std::size_t Size>
-CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
-    const char (&value)[Size],
-    std::int64_t& out) noexcept {
-    return parse_hex<TrimAsciiWhitespace>(value, value + Size - 1, out);
-}
-
 #ifdef CLASSIFY_SCALAR_HAS_CXX17
 template<bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
@@ -1494,12 +1502,6 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
     std::string_view value,
     typename detail::scalar_home<Kind>::type& out) noexcept {
     return parse_scalar<Kind, TrimAsciiWhitespace>(value.data(), value.data() + value.size(), out);
-}
-
-template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
-CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<Kind == scalar_timestamp || Kind == scalar_bigint, bool>::type parse_scalar(
-    std::string_view value) noexcept {
-    return parse_scalar<Kind, TrimAsciiWhitespace>(value.data(), value.data() + value.size());
 }
 #endif
 

@@ -85,17 +85,23 @@ classify_scalar::parse_scalar<classify_scalar::scalar_float>(
     float_first + 4,
     number);
 
-const char* timestamp = "2024-01-31T23:59:58Z";
-bool is_timestamp =
-    classify_scalar::parse_scalar<classify_scalar::scalar_timestamp>(
-        timestamp,
-        timestamp + 20);
+std::uint64_t timestamp = 0;
+const char* timestamp_first = "2024-01-31T23:59:58Z";
+classify_scalar::parse_scalar<classify_scalar::scalar_timestamp>(
+    timestamp_first,
+    timestamp_first + 20,
+    timestamp);
 ```
 
 `parse_scalar<scalar_int>` reuses the normal numeric classifier. Use `parse_hex`
 when bare hexadecimal should be accepted explicitly without making inference
 classify `DEADBEEF` as an integer. The parser supports optional
 ASCII-boundary trimming through its second template argument.
+`parse_scalar<scalar_timestamp>` returns a JavaScript-style Unix timestamp in
+milliseconds, normalized to UTC, and currently requires a non-negative result
+because the natural home is `std::uint64_t`. `scalar_bigint` remains
+classification-only because the built-in path deliberately avoids allocating or
+storing the full integer.
 
 ## Extending the Classifier/Parser
 

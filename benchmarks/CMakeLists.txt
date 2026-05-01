@@ -43,8 +43,3 @@ function(add_classify_scalar_benchmark target_name)
 endfunction()
 
 add_classify_scalar_benchmark(classify_scalar_benchmarks)
-
-add_classify_scalar_benchmark(classify_scalar_benchmarks_fallback)
-target_compile_definitions(classify_scalar_benchmarks_fallback
-    PRIVATE
-        CLASSIFY_SCALAR_DISABLE_STD_FROM_CHARS)

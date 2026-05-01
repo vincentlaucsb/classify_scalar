@@ -114,44 +114,50 @@ SOFTWARE.
 #endif
 
 #if CLASSIFY_SCALAR_CPLUSPLUS >= 201703L
+#include <charconv>
 #include <string_view>
 #include <system_error>
-#if !defined(CLASSIFY_SCALAR_DISABLE_STD_FROM_CHARS)
-#include <charconv>
-#if defined(_LIBCPP_VERSION)
-#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
-#else
-#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 1
-#endif
-#else
-#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
-#endif
-#else
-#define CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS 0
 #endif
 
 namespace classify_scalar {
 
+/// Built-in scalar classification ids returned by classify_scalar().
 enum ScalarKind : int {
+    /// Empty input after optional ASCII trimming.
     scalar_null = 0,
+    /// Input did not match any enabled scalar policy.
     scalar_string = 1,
+    /// Case-insensitive "true" or "false".
     scalar_bool = 2,
+    /// Signed 64-bit integer, including 0x-prefixed hexadecimal.
     scalar_int = 3,
+    /// Floating-point literal parsed as double.
     scalar_float = 4,
+    /// Conservative ISO date/date-time value, stored as UTC unix milliseconds when parsed.
     scalar_timestamp = 5,
+    /// Well-formed decimal integer outside the int64 range.
     scalar_bigint = 6,
+    /// Reserved sentinel for invalid integration results.
     scalar_invalid = -2,
+    /// First id available for user-defined scalar kinds.
     scalar_custom_begin = 1024
 };
 
+/// Narrowest signed integer family that can hold a parsed int64 value.
 enum IntegerKind : unsigned char {
+    /// No integer value was stored or requested.
     integer_none = 0,
+    /// Value fits in std::int8_t.
     integer_int8,
+    /// Value fits in std::int16_t.
     integer_int16,
+    /// Value fits in std::int32_t.
     integer_int32,
+    /// Value requires std::int64_t.
     integer_int64
 };
 
+/// Include these entries at the top of a custom scalar enum.
 #define CLASSIFY_SCALAR_BUILTINS \
     scalar_null = ::classify_scalar::scalar_null, \
     scalar_string = ::classify_scalar::scalar_string, \
@@ -162,6 +168,118 @@ enum IntegerKind : unsigned char {
     scalar_bigint = ::classify_scalar::scalar_bigint, \
     scalar_invalid = ::classify_scalar::scalar_invalid, \
     scalar_custom_begin = ::classify_scalar::scalar_custom_begin - 1
+
+/// Non-owning half-open character span [first, last).
+struct scalar_span {
+    scalar_span() noexcept : first(nullptr), last(nullptr) {}
+    scalar_span(const char* first_, const char* last_) noexcept : first(first_), last(last_) {}
+
+    const char* first;
+    const char* last;
+};
+
+/// Output object used when only the scalar kind is needed.
+struct classify_only_output {
+    template<ScalarKind, typename T>
+    void set(T) const noexcept {}
+};
+
+/// Return the narrowest signed integer kind that can store value.
+CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 IntegerKind classify_integer_kind(std::int64_t value) noexcept {
+    return value >= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min())
+            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
+        ? integer_int8
+        : value >= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min())
+            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
+        ? integer_int16
+        : value >= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min())
+            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
+        ? integer_int32
+        : integer_int64;
+}
+
+/// Built-in output adapter for numeric, bool, timestamp, and integer-width storage.
+struct builtin_output_refs {
+    builtin_output_refs(long double& number_, std::int64_t& integer_, bool& boolean_) noexcept
+        : number(number_), integer(integer_), boolean(boolean_), integer_kind(nullptr), timestamp(nullptr) {}
+
+    builtin_output_refs(
+        long double& number_,
+        std::int64_t& integer_,
+        bool& boolean_,
+        IntegerKind& integer_kind_) noexcept
+        : number(number_),
+          integer(integer_),
+          boolean(boolean_),
+          integer_kind(&integer_kind_),
+          timestamp(nullptr) {}
+
+    builtin_output_refs(
+        long double& number_,
+        std::int64_t& integer_,
+        bool& boolean_,
+        std::uint64_t& timestamp_) noexcept
+        : number(number_),
+          integer(integer_),
+          boolean(boolean_),
+          integer_kind(nullptr),
+          timestamp(&timestamp_) {}
+
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_int, void>::type set(std::int64_t value) const noexcept {
+        integer = value;
+        number = static_cast<long double>(value);
+        if (integer_kind)
+            *integer_kind = classify_integer_kind(value);
+    }
+
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_float, void>::type set(long double value) const noexcept {
+        number = value;
+    }
+
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_bool, void>::type set(bool value) const noexcept {
+        boolean = value;
+    }
+
+    template<ScalarKind Kind>
+    typename std::enable_if<Kind == scalar_timestamp, void>::type set(std::uint64_t value) const noexcept {
+        if (timestamp)
+            *timestamp = value;
+    }
+
+    long double& number;
+    std::int64_t& integer;
+    bool& boolean;
+    IntegerKind* integer_kind;
+    std::uint64_t* timestamp;
+};
+
+/// Create the standard built-in output adapter.
+CLASSIFY_SCALAR_FORCE_INLINE builtin_output_refs output_refs(long double& number, std::int64_t& integer, bool& boolean) noexcept {
+    return builtin_output_refs(number, integer, boolean);
+}
+
+/// Create the standard output adapter and also report the parsed integer width.
+CLASSIFY_SCALAR_FORCE_INLINE builtin_output_refs output_refs(
+    long double& number,
+    std::int64_t& integer,
+    bool& boolean,
+    IntegerKind& integer_kind) noexcept {
+    return builtin_output_refs(number, integer, boolean, integer_kind);
+}
+
+enum class ParseFlag : unsigned char {
+    /// Any byte with no scalar-classification meaning in the active parse table.
+    other,
+    /// Active decimal separator byte, '.' by default.
+    decimal,
+    /// Exponent marker bytes 'e' and 'E'.
+    might_be_exponential,
+    /// Hexadecimal prefix marker bytes 'x' and 'X'.
+    might_be_hex_prefix
+};
 
 namespace detail {
 
@@ -254,116 +372,6 @@ scalar_kind_cast(Enum value) noexcept {
         std::is_same<Kind, ScalarKind>::value>::from_enum(value);
 }
 
-} // namespace detail
-
-struct scalar_span {
-    scalar_span() noexcept : first(nullptr), last(nullptr) {}
-    scalar_span(const char* first_, const char* last_) noexcept : first(first_), last(last_) {}
-
-    const char* first;
-    const char* last;
-};
-
-struct classify_only_output {
-    template<ScalarKind, typename T>
-    void set(T) const noexcept {}
-};
-
-CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 IntegerKind classify_integer_kind(std::int64_t value) noexcept {
-    return value >= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min())
-            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
-        ? integer_int8
-        : value >= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min())
-            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
-        ? integer_int16
-        : value >= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min())
-            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
-        ? integer_int32
-        : integer_int64;
-}
-
-struct builtin_output_refs {
-    builtin_output_refs(long double& number_, std::int64_t& integer_, bool& boolean_) noexcept
-        : number(number_), integer(integer_), boolean(boolean_), integer_kind(nullptr), timestamp(nullptr) {}
-
-    builtin_output_refs(
-        long double& number_,
-        std::int64_t& integer_,
-        bool& boolean_,
-        IntegerKind& integer_kind_) noexcept
-        : number(number_),
-          integer(integer_),
-          boolean(boolean_),
-          integer_kind(&integer_kind_),
-          timestamp(nullptr) {}
-
-    builtin_output_refs(
-        long double& number_,
-        std::int64_t& integer_,
-        bool& boolean_,
-        std::uint64_t& timestamp_) noexcept
-        : number(number_),
-          integer(integer_),
-          boolean(boolean_),
-          integer_kind(nullptr),
-          timestamp(&timestamp_) {}
-
-    template<ScalarKind Kind>
-    typename std::enable_if<Kind == scalar_int, void>::type set(std::int64_t value) const noexcept {
-        integer = value;
-        number = static_cast<long double>(value);
-        if (integer_kind)
-            *integer_kind = classify_integer_kind(value);
-    }
-
-    template<ScalarKind Kind>
-    typename std::enable_if<Kind == scalar_float, void>::type set(long double value) const noexcept {
-        number = value;
-    }
-
-    template<ScalarKind Kind>
-    typename std::enable_if<Kind == scalar_bool, void>::type set(bool value) const noexcept {
-        boolean = value;
-    }
-
-    template<ScalarKind Kind>
-    typename std::enable_if<Kind == scalar_timestamp, void>::type set(std::uint64_t value) const noexcept {
-        if (timestamp)
-            *timestamp = value;
-    }
-
-    long double& number;
-    std::int64_t& integer;
-    bool& boolean;
-    IntegerKind* integer_kind;
-    std::uint64_t* timestamp;
-};
-
-CLASSIFY_SCALAR_FORCE_INLINE builtin_output_refs output_refs(long double& number, std::int64_t& integer, bool& boolean) noexcept {
-    return builtin_output_refs(number, integer, boolean);
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE builtin_output_refs output_refs(
-    long double& number,
-    std::int64_t& integer,
-    bool& boolean,
-    IntegerKind& integer_kind) noexcept {
-    return builtin_output_refs(number, integer, boolean, integer_kind);
-}
-
-enum class ParseFlag : unsigned char {
-    /// Any byte with no scalar-classification meaning in the active parse table.
-    other,
-    /// Active decimal separator byte, '.' by default.
-    decimal,
-    /// Exponent marker bytes 'e' and 'E'.
-    might_be_exponential,
-    /// Hexadecimal prefix marker bytes 'x' and 'X'.
-    might_be_hex_prefix
-};
-
-namespace detail {
-
 CLASSIFY_SCALAR_FORCE_INLINE bool is_ascii_space(const char c) noexcept {
     static CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 bool table[256] = {
         false, false, false, false, false, false, false, false,
@@ -443,21 +451,6 @@ struct parse_state {
     const char* numeric_first;
     Sign sign;
 };
-
-CLASSIFY_SCALAR_FORCE_INLINE const char* apply_leading_sign(parse_state& state) noexcept {
-    const unsigned char first_char = static_cast<unsigned char>(*state.first);
-    if (first_char == '+' || first_char == '-') {
-        state.sign = first_char == '-'
-            ? parse_state::negative_sign
-            : parse_state::positive_sign;
-        state.numeric_first = state.sign == parse_state::negative_sign
-            ? state.first
-            : state.first + 1;
-        return state.first + 1;
-    }
-
-    return state.first;
-}
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX20
 template<typename Policy>
@@ -587,15 +580,61 @@ CLASSIFY_SCALAR_CONSTEXPR_14 std::array<bool, 256> create_ascii_digits_table() n
     return table;
 }
 
+CLASSIFY_SCALAR_FORCE_INLINE bool is_ascii_digit(const unsigned char c) noexcept {
+    static CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 std::array<bool, 256> ascii_digits = create_ascii_digits_table();
+    return ascii_digits[c];
+}
+
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 unsigned char invalid_digit_value = 255U;
+
+CLASSIFY_SCALAR_CONSTEXPR_14 std::array<unsigned char, 256> create_digit_values_table() noexcept {
+    std::array<unsigned char, 256> table = {};
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        table[i] = invalid_digit_value;
+    }
+    for (unsigned char i = 0; i < 10; ++i) {
+        table[static_cast<unsigned char>('0' + i)] = i;
+    }
+    for (unsigned char i = 0; i < 26; ++i) {
+        table[static_cast<unsigned char>('A' + i)] = static_cast<unsigned char>(10U + i);
+        table[static_cast<unsigned char>('a' + i)] = static_cast<unsigned char>(10U + i);
+    }
+    return table;
+}
+
+CLASSIFY_SCALAR_FORCE_INLINE unsigned char digit_value(const char c) noexcept {
+    static CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 std::array<unsigned char, 256> digit_values = create_digit_values_table();
+    return digit_values[static_cast<unsigned char>(c)];
+}
+
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::int64_t int64_min_value = std::numeric_limits<std::int64_t>::min();
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::int64_t int64_max_value = std::numeric_limits<std::int64_t>::max();
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::uint64_t int64_positive_limit = static_cast<std::uint64_t>(int64_max_value);
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::uint64_t int64_negative_limit = int64_positive_limit + 1U;
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 long double int64_min_long_double = static_cast<long double>(int64_min_value);
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 long double int64_max_long_double = static_cast<long double>(int64_max_value);
+
+namespace parsing {
+
+CLASSIFY_SCALAR_FORCE_INLINE const char* apply_leading_sign(parse_state& state) noexcept {
+    const unsigned char first_char = static_cast<unsigned char>(*state.first);
+    if (first_char == '+' || first_char == '-') {
+        state.sign = first_char == '-'
+            ? parse_state::negative_sign
+            : parse_state::positive_sign;
+        state.numeric_first = state.sign == parse_state::negative_sign
+            ? state.first
+            : state.first + 1;
+        return state.first + 1;
+    }
+
+    return state.first;
+}
+
 CLASSIFY_SCALAR_FORCE_INLINE std::uint32_t load_u32(const char* value) noexcept {
     std::uint32_t word = 0;
     std::memcpy(&word, value, sizeof(word));
     return word;
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE bool is_ascii_digit(const unsigned char c) noexcept {
-    static CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 std::array<bool, 256> ascii_digits = create_ascii_digits_table();
-    return ascii_digits[c];
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE scalar_span trim_ascii(const char* first, const char* last) noexcept {
@@ -646,27 +685,9 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_false(const char* first, const char* las
     return true;
 }
 
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 unsigned char invalid_digit_value = 255U;
+} // namespace parsing
 
-CLASSIFY_SCALAR_CONSTEXPR_14 std::array<unsigned char, 256> create_digit_values_table() noexcept {
-    std::array<unsigned char, 256> table = {};
-    for (std::size_t i = 0; i < table.size(); ++i) {
-        table[i] = invalid_digit_value;
-    }
-    for (unsigned char i = 0; i < 10; ++i) {
-        table[static_cast<unsigned char>('0' + i)] = i;
-    }
-    for (unsigned char i = 0; i < 26; ++i) {
-        table[static_cast<unsigned char>('A' + i)] = static_cast<unsigned char>(10U + i);
-        table[static_cast<unsigned char>('a' + i)] = static_cast<unsigned char>(10U + i);
-    }
-    return table;
-}
-
-CLASSIFY_SCALAR_FORCE_INLINE unsigned char digit_value(const char c) noexcept {
-    static CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 std::array<unsigned char, 256> digit_values = create_digit_values_table();
-    return digit_values[static_cast<unsigned char>(c)];
-}
+namespace parsing_timestamp {
 
 CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 bool is_leap_year(const int year) noexcept {
     return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -825,12 +846,9 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_iso_timestamp(
     return true;
 }
 
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::int64_t int64_min_value = std::numeric_limits<std::int64_t>::min();
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::int64_t int64_max_value = std::numeric_limits<std::int64_t>::max();
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::uint64_t int64_positive_limit = static_cast<std::uint64_t>(int64_max_value);
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::uint64_t int64_negative_limit = int64_positive_limit + 1U;
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 long double int64_min_long_double = static_cast<long double>(int64_min_value);
-CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 long double int64_max_long_double = static_cast<long double>(int64_max_value);
+} // namespace parsing_timestamp
+
+namespace parsing {
 
 enum integer_parse_result {
     integer_parse_invalid,
@@ -1017,7 +1035,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_dot(
     if (size > 4096)
         return false;
 
-#if CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
+#ifdef CLASSIFY_SCALAR_HAS_CXX17
     double parsed = 0;
     const std::from_chars_result result = std::from_chars(first, last, parsed);
     if (result.ec != std::errc() || result.ptr != last || !std::isfinite(parsed))
@@ -1043,12 +1061,14 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_with_decimal(
     if (size > 4096)
         return false;
 
-#if CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
+#ifdef CLASSIFY_SCALAR_HAS_CXX17
     char buffer[4097];
     std::size_t i = 0;
     for (const char* current = first; current != last; ++current, ++i) {
         const unsigned char c = static_cast<unsigned char>(*current);
         if (is_ascii_space(static_cast<char>(c)))
+            return false;
+        if (DecimalSymbol != '.' && c == '.')
             return false;
 
         buffer[i] = c == static_cast<unsigned char>(DecimalSymbol) ? '.' : static_cast<char>(c);
@@ -1134,6 +1154,8 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     return scalar_float;
 }
 
+} // namespace parsing
+
 template<char DecimalSymbol = '.', bool IntegralFloatingAsInteger = true>
 struct builtin_numeric_policy {
     static_assert(DecimalSymbol != 'e' && DecimalSymbol != 'E', "decimal symbol cannot be an exponent marker");
@@ -1156,8 +1178,8 @@ struct builtin_numeric_policy {
         parse_state& state,
         Output& output) const noexcept {
         double parsed_float = 0;
-        return parse_floating<DecimalSymbol>(state, &parsed_float)
-            ? finish_floating<IntegralFloatingAsInteger>(parsed_float, output)
+        return parsing::parse_floating<DecimalSymbol>(state, &parsed_float)
+            ? parsing::finish_floating<IntegralFloatingAsInteger>(parsed_float, output)
             : scalar_string;
     }
 
@@ -1169,8 +1191,8 @@ struct builtin_numeric_policy {
             return scalar_string;
 
         double parsed_float = 0;
-        return parse_floating<DecimalSymbol>(state, &parsed_float)
-            ? finish_floating<IntegralFloatingAsInteger>(parsed_float, output)
+        return parsing::parse_floating<DecimalSymbol>(state, &parsed_float)
+            ? parsing::finish_floating<IntegralFloatingAsInteger>(parsed_float, output)
             : scalar_string;
     }
 
@@ -1182,8 +1204,8 @@ struct builtin_numeric_policy {
             return scalar_string;
 
         std::int64_t parsed_integer = 0;
-        return parse_hex_integer(state, &parsed_integer)
-            ? finish_integer(parsed_integer, output)
+        return parsing::parse_hex_integer(state, &parsed_integer)
+            ? parsing::finish_integer(parsed_integer, output)
             : scalar_string;
     }
 
@@ -1192,11 +1214,11 @@ struct builtin_numeric_policy {
         parse_state& state,
         Output& output) const noexcept {
         std::int64_t parsed_integer = 0;
-        const integer_parse_result result = parse_decimal_integer(state, &parsed_integer);
-        if (result == integer_parse_valid)
-            return finish_integer(parsed_integer, output);
+        const parsing::integer_parse_result result = parsing::parse_decimal_integer(state, &parsed_integer);
+        if (result == parsing::integer_parse_valid)
+            return parsing::finish_integer(parsed_integer, output);
 
-        return result == integer_parse_overflow
+        return result == parsing::integer_parse_overflow
             ? scalar_bigint
             : scalar_string;
     }
@@ -1234,7 +1256,7 @@ struct builtin_numeric_policy {
     CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_number(
         parse_state& state,
         Output& output) const noexcept {
-        const char* value_first = apply_leading_sign(state);
+        const char* value_first = parsing::apply_leading_sign(state);
         if (value_first == state.last)
             return scalar_string;
 
@@ -1261,7 +1283,7 @@ struct builtin_bool_policy {
         parse_state& state,
         Output& output) const noexcept {
         bool parsed = false;
-        if (!(parse_true(state.first, state.last, &parsed) || parse_false(state.first, state.last, &parsed)))
+        if (!(parsing::parse_true(state.first, state.last, &parsed) || parsing::parse_false(state.first, state.last, &parsed)))
             return scalar_string;
 
         output.template set<scalar_bool>(parsed);
@@ -1279,7 +1301,7 @@ struct builtin_timestamp_policy {
         parse_state& state,
         Output& output) const noexcept {
         std::uint64_t timestamp = 0;
-        if (!parse_iso_timestamp(state.first, state.last, &timestamp))
+        if (!parsing_timestamp::parse_iso_timestamp(state.first, state.last, &timestamp))
             return scalar_string;
 
         output.template set<scalar_timestamp>(timestamp);
@@ -1287,34 +1309,103 @@ struct builtin_timestamp_policy {
     }
 };
 
+template<ScalarKind Kind>
+struct scalar_home;
+
+template<>
+struct scalar_home<scalar_bool> {
+    typedef bool type;
+    typedef policy_pack<builtin_bool_policy> policy;
+
+    static bool get(long double, std::int64_t, std::uint64_t, bool boolean) noexcept {
+        return boolean;
+    }
+};
+
+template<>
+struct scalar_home<scalar_int> {
+    typedef std::int64_t type;
+    typedef policy_pack<builtin_numeric_policy<> > policy;
+
+    static std::int64_t get(long double, std::int64_t integer, std::uint64_t, bool) noexcept {
+        return integer;
+    }
+};
+
+template<>
+struct scalar_home<scalar_float> {
+    typedef double type;
+    typedef policy_pack<builtin_numeric_policy<> > policy;
+
+    static double get(long double number, std::int64_t, std::uint64_t, bool) noexcept {
+        return static_cast<double>(number);
+    }
+};
+
+template<>
+struct scalar_home<scalar_timestamp> {
+    typedef std::uint64_t type;
+    typedef policy_pack<builtin_timestamp_policy> policy;
+
+    static std::uint64_t get(long double, std::int64_t, std::uint64_t timestamp, bool) noexcept {
+        return timestamp;
+    }
+};
+
+template<char DecimalSymbol, bool TrimAsciiWhitespace>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_float_with_decimal(
+    const char* first,
+    const char* last,
+    double& out) noexcept {
+    const scalar_span span = parsing::trim_span<TrimAsciiWhitespace>(first, last);
+    if (span.first == span.last)
+        return false;
+
+    parse_state state(span.first, span.last);
+    const char* value_first = parsing::apply_leading_sign(state);
+    if (value_first == state.last)
+        return false;
+
+    return parsing::parse_floating<DecimalSymbol>(state, &out);
+}
+
 } // namespace detail
 
 typedef detail::parse_state parse_state;
 
+/// Ordered set of scalar policies; earlier policies have higher priority.
 template<typename... Policies>
 using policy_pack = detail::policy_pack<Policies...>;
 
+/// Built-in numeric recognizer for int, float, bigint, and 0x-prefixed hex.
 template<char DecimalSymbol = '.', bool IntegralFloatingAsInteger = true>
 using builtin_numeric_policy = detail::builtin_numeric_policy<DecimalSymbol, IntegralFloatingAsInteger>;
 
+/// Built-in case-insensitive true/false recognizer.
 typedef detail::builtin_bool_policy builtin_bool_policy;
 
+/// Built-in conservative ISO date/date-time recognizer.
 typedef detail::builtin_timestamp_policy builtin_timestamp_policy;
 
+/// Default policy pack: timestamp, numeric, then bool.
 typedef detail::policy_pack<
     detail::builtin_timestamp_policy,
     detail::builtin_numeric_policy<>,
     detail::builtin_bool_policy> builtin_policy_pack;
 
+/// Alias for the default built-in policy pack.
 typedef builtin_policy_pack default_policy_pack;
 
+/// Numeric and bool policy pack with timestamp recognition disabled.
 typedef detail::policy_pack<
     detail::builtin_numeric_policy<>,
     detail::builtin_bool_policy> numeric_bool_policy_pack;
 
+/// Numeric-only policy pack for null/string/int/float/bigint inference.
 typedef detail::policy_pack<
     detail::builtin_numeric_policy<> > numeric_policy_pack;
 
+/// Classify a pointer span using the selected policy pack and output adapter.
 template<
     typename Kind = ScalarKind,
     bool TrimAsciiWhitespace = true,
@@ -1325,7 +1416,7 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
     const char* last,
     Output output = Output(),
     Policy policy = Policy()) noexcept {
-    const scalar_span span = detail::trim_span<TrimAsciiWhitespace>(first, last);
+    const scalar_span span = detail::parsing::trim_span<TrimAsciiWhitespace>(first, last);
     if (span.first == span.last)
         return !first || !last || last < first
             ? detail::scalar_kind_cast<Kind>(scalar_string)
@@ -1339,6 +1430,7 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
 }
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX17
+/// Classify a string_view using the selected policy pack and output adapter.
 template<
     typename Kind = ScalarKind,
     bool TrimAsciiWhitespace = true,
@@ -1360,75 +1452,47 @@ CLASSIFY_SCALAR_FORCE_INLINE Kind classify_scalar(
 
 #endif
 
+/// Parse an explicit hexadecimal integer, accepting either bare hex or 0x-prefixed hex.
 template<bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
     const char* first,
     const char* last,
     std::int64_t& out) noexcept {
-    const scalar_span span = detail::trim_span<TrimAsciiWhitespace>(first, last);
+    const scalar_span span = detail::parsing::trim_span<TrimAsciiWhitespace>(first, last);
     if (span.first == span.last)
         return false;
 
     detail::parse_state state(span.first, span.last);
-    const char* current = detail::apply_leading_sign(state);
+    const char* current = detail::parsing::apply_leading_sign(state);
     if (current == state.last)
         return false;
 
     if (current + 2 <= state.last && current[0] == '0' && (current[1] == 'x' || current[1] == 'X')) {
         state.current = current + 1;
-        return detail::parse_hex_integer(state, &out);
+        return detail::parsing::parse_hex_integer(state, &out);
     }
 
-    return detail::parse_bare_hex_integer(state, &out);
+    return detail::parsing::parse_bare_hex_integer(state, &out);
 }
 
-namespace detail {
-
-template<ScalarKind Kind>
-struct scalar_home;
-
-template<>
-struct scalar_home<scalar_bool> {
-    typedef bool type;
-    typedef policy_pack<builtin_bool_policy> policy;
-
-    static bool get(long double, std::int64_t, std::uint64_t, bool boolean) noexcept {
-        return boolean;
+/// Parse an explicit floating-point value with runtime '.' or ',' decimal selection.
+template<bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_float(
+    const char* first,
+    const char* last,
+    double& out,
+    const char decimal_symbol = '.') noexcept {
+    switch (decimal_symbol) {
+    case '.':
+        return detail::parse_float_with_decimal<'.', TrimAsciiWhitespace>(first, last, out);
+    case ',':
+        return detail::parse_float_with_decimal<',', TrimAsciiWhitespace>(first, last, out);
+    default:
+        return false;
     }
-};
+}
 
-template<>
-struct scalar_home<scalar_int> {
-    typedef std::int64_t type;
-    typedef numeric_policy_pack policy;
-
-    static std::int64_t get(long double, std::int64_t integer, std::uint64_t, bool) noexcept {
-        return integer;
-    }
-};
-
-template<>
-struct scalar_home<scalar_float> {
-    typedef double type;
-    typedef numeric_policy_pack policy;
-
-    static double get(long double number, std::int64_t, std::uint64_t, bool) noexcept {
-        return static_cast<double>(number);
-    }
-};
-
-template<>
-struct scalar_home<scalar_timestamp> {
-    typedef std::uint64_t type;
-    typedef policy_pack<builtin_timestamp_policy> policy;
-
-    static std::uint64_t get(long double, std::int64_t, std::uint64_t timestamp, bool) noexcept {
-        return timestamp;
-    }
-};
-
-} // namespace detail
-
+/// Parse one built-in scalar kind directly and store its natural C++ value.
 template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
     const char* first,
@@ -1452,6 +1516,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
 }
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX17
+/// string_view overload for parse_hex().
 template<bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
     std::string_view value,
@@ -1459,6 +1524,16 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_hex(
     return parse_hex<TrimAsciiWhitespace>(value.data(), value.data() + value.size(), out);
 }
 
+/// string_view overload for parse_float().
+template<bool TrimAsciiWhitespace = true>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_float(
+    std::string_view value,
+    double& out,
+    const char decimal_symbol = '.') noexcept {
+    return parse_float<TrimAsciiWhitespace>(value.data(), value.data() + value.size(), out, decimal_symbol);
+}
+
+/// string_view overload for parse_scalar().
 template<ScalarKind Kind, bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
     std::string_view value,

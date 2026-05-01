@@ -231,21 +231,12 @@ auto value = classify_scalar::classify_scalar("3,14",
     comma_decimal_pack()); // scalar_float
 ```
 
-For runtime decimal symbols, keep the dispatch at your integration boundary:
+For explicit float parsing with a runtime decimal symbol, use `parse_float`.
+It supports the common `'.'` and `','` decimal symbols:
 
 ```cpp
-switch (decimal_symbol) {
-case '.':
-    return classify_scalar::classify_scalar(first, last);
-case ',':
-    return classify_scalar::classify_scalar(
-        first,
-        last,
-        classify_scalar::classify_only_output(),
-        comma_decimal_pack());
-default:
-    return classify_scalar::scalar_invalid;
-}
+double parsed = 0;
+bool ok = classify_scalar::parse_float(first, last, parsed, decimal_symbol);
 ```
 
 The default numeric policy returns `scalar_int` for integral-valued floating

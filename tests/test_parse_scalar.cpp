@@ -24,6 +24,11 @@ bool parse_literal(const char (&value)[Size], Output& out) {
     return classify_scalar::parse_scalar<Kind>(value, value + Size - 1, out);
 }
 
+template<std::size_t Size>
+bool parse_float_literal(const char (&value)[Size], double& out, const char decimal_symbol = '.') {
+    return classify_scalar::parse_float(value, value + Size - 1, out, decimal_symbol);
+}
+
 TEST_CASE("explicit hex parsing accepts bare hexadecimal") {
     std::int64_t value = 0;
 
@@ -72,4 +77,24 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
 
     CHECK(parse_literal<classify_scalar::scalar_float>("1e-3", floating));
     CHECK(floating == Catch::Approx(0.001));
+}
+
+TEST_CASE("explicit float parser accepts runtime decimal symbols") {
+    double floating = 0;
+
+    CHECK(parse_float_literal("3.14", floating, '.'));
+    CHECK(floating == Catch::Approx(3.14));
+
+    CHECK(parse_float_literal("3,14", floating, ','));
+    CHECK(floating == Catch::Approx(3.14));
+
+    CHECK(parse_float_literal("-1,25e2", floating, ','));
+    CHECK(floating == Catch::Approx(-125.0));
+
+    CHECK(parse_float_literal("42", floating));
+    CHECK(floating == Catch::Approx(42.0));
+
+    CHECK_FALSE(parse_float_literal("3,14", floating, '.'));
+    CHECK_FALSE(parse_float_literal("3.14", floating, ','));
+    CHECK_FALSE(parse_float_literal("3;14", floating, ';'));
 }

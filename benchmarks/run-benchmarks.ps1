@@ -65,9 +65,7 @@ Write-Host "Repository: $repoRoot"
 $defaultArgs = @("--benchmark_min_time=$MinTime")
 $allArgs = $defaultArgs + $BenchmarkArgs
 
-foreach ($name in @("classify_scalar_benchmarks", "classify_scalar_benchmarks_fallback")) {
-    $exe = Find-BenchmarkExe $name
-    Write-Host ""
-    Write-Host "Running: $exe $allArgs"
-    & $exe @allArgs
-}
+$exe = Find-BenchmarkExe "classify_scalar_benchmarks"
+Write-Host ""
+Write-Host "Running: $exe $allArgs"
+& $exe @allArgs

@@ -433,6 +433,52 @@ BenchKind classify_current(std::string_view value) {
     }
 }
 
+BenchKind classify_current_no_timestamp(std::string_view value) {
+    long double number = 0;
+    std::int64_t integer = 0;
+    bool boolean = false;
+    const auto kind = classify_scalar::classify_scalar(
+        value,
+        classify_scalar::output_refs(number, integer, boolean),
+        classify_scalar::numeric_bool_policy_pack());
+
+    switch (kind) {
+    case classify_scalar::scalar_null:
+        return BenchKind::null_value;
+    case classify_scalar::scalar_bool:
+        return BenchKind::boolean;
+    case classify_scalar::scalar_int:
+        return BenchKind::integer;
+    case classify_scalar::scalar_float:
+        return BenchKind::floating;
+    case classify_scalar::scalar_string:
+    default:
+        return BenchKind::string;
+    }
+}
+
+BenchKind classify_current_numeric_only(std::string_view value) {
+    long double number = 0;
+    std::int64_t integer = 0;
+    bool boolean = false;
+    const auto kind = classify_scalar::classify_scalar(
+        value,
+        classify_scalar::output_refs(number, integer, boolean),
+        classify_scalar::numeric_policy_pack());
+
+    switch (kind) {
+    case classify_scalar::scalar_null:
+        return BenchKind::null_value;
+    case classify_scalar::scalar_int:
+        return BenchKind::integer;
+    case classify_scalar::scalar_float:
+        return BenchKind::floating;
+    case classify_scalar::scalar_string:
+    default:
+        return BenchKind::string;
+    }
+}
+
 BenchKind classify_naive_from_chars(std::string_view value) {
     value = trim_ascii(value);
     if (value.empty()) {
@@ -560,6 +606,14 @@ static void BM_classify_scalar(benchmark::State& state) {
     run_classifier(state, classify_current);
 }
 
+static void BM_classify_scalar_no_timestamp(benchmark::State& state) {
+    run_classifier(state, classify_current_no_timestamp);
+}
+
+static void BM_classify_scalar_numeric_only(benchmark::State& state) {
+    run_classifier(state, classify_current_numeric_only);
+}
+
 static void BM_previous_data_type(benchmark::State& state) {
     run_classifier(state, previous_data_type::classify);
 }
@@ -585,6 +639,8 @@ static void BM_parse_float_from_chars(benchmark::State& state) {
 }
 
 BENCHMARK(BM_classify_scalar);
+BENCHMARK(BM_classify_scalar_no_timestamp);
+BENCHMARK(BM_classify_scalar_numeric_only);
 BENCHMARK(BM_previous_data_type);
 BENCHMARK(BM_naive_from_chars);
 BENCHMARK(BM_parse_int_classify_scalar);

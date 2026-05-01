@@ -1,8 +1,8 @@
 param(
-    [string]$BuildDir = "$PSScriptRoot\out\build",
+    [string]$BuildDir = "",
     [string]$Config = "Release",
     [string]$Generator = "Ninja",
-    [string]$VsDevCmd = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat",
+    [string]$VsDevCmd = "",
     [string]$MinTime = "0.5s",
     [string[]]$BenchmarkArgs = @()
 )
@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $sourceDir = $PSScriptRoot
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
+$script:ResolvedVsDevCmd = $null
 
 function Find-CmdExe {
     $candidates = @(
@@ -28,15 +29,66 @@ function Find-CmdExe {
     throw "Could not find cmd.exe. Set ComSpec or pass a usable Windows system path."
 }
 
+function Get-WindowsSystemPath {
+    $windowsRoot = if ($env:SystemRoot) { $env:SystemRoot } else { "C:\Windows" }
+    return @(
+        (Join-Path $windowsRoot "System32"),
+        $windowsRoot,
+        (Join-Path $windowsRoot "System32\Wbem"),
+        (Join-Path $windowsRoot "System32\WindowsPowerShell\v1.0")
+    ) -join ";"
+}
+
+function Find-VsDevCmd {
+    if ($VsDevCmd -and (Test-Path $VsDevCmd)) {
+        return $VsDevCmd
+    }
+
+    $candidates = @(
+        "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\18\Professional\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Invoke-NativeBuildCommand {
     param([string]$Command)
 
-    if ($env:OS -eq "Windows_NT" -and (Test-Path $VsDevCmd)) {
+    if ($env:OS -eq "Windows_NT" -and $script:ResolvedVsDevCmd) {
         $cmdExe = Find-CmdExe
-        & $cmdExe /d /s /c "call `"$VsDevCmd`" -arch=x64 -host_arch=x64 && $Command"
+        $systemPath = Get-WindowsSystemPath
+        & $cmdExe /d /s /c "set `"Path=`" && set `"PATH=$systemPath`" && call `"$script:ResolvedVsDevCmd`" -arch=x64 -host_arch=x64 && $Command"
     } else {
         Invoke-Expression $Command
     }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $Command"
+    }
+}
+
+$script:ResolvedVsDevCmd = Find-VsDevCmd
+if (-not $BuildDir) {
+    $BuildDir = if ($script:ResolvedVsDevCmd -like "*\Microsoft Visual Studio\18\*") {
+        "$PSScriptRoot\out\build-vs2026"
+    } else {
+        "$PSScriptRoot\out\build"
+    }
+}
+
+if ($script:ResolvedVsDevCmd) {
+    Write-Host "Using Visual Studio environment: $script:ResolvedVsDevCmd"
 }
 
 Invoke-NativeBuildCommand "cmake -S `"$sourceDir`" -B `"$BuildDir`" -G `"$Generator`" -DCMAKE_BUILD_TYPE=$Config"

@@ -153,8 +153,8 @@ struct telephone_policy {
 
 typedef classify_scalar::policy_pack<
     telephone_policy,
-    classify_scalar::builtin_timestamp_policy,
     classify_scalar::builtin_numeric_policy<>,
+    classify_scalar::builtin_timestamp_policy,
     classify_scalar::builtin_bool_policy> telephone_pack;
 
 } // namespace

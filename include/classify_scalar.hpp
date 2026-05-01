@@ -102,9 +102,11 @@ SOFTWARE.
 #endif
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX17
+#define IF_CONSTEXPR if constexpr
 #define CLASSIFY_SCALAR_CONSTEXPR_17 constexpr
 #define CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 constexpr
 #else
+#define IF_CONSTEXPR if
 #define CLASSIFY_SCALAR_CONSTEXPR_17 inline
 #define CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 const
 #endif
@@ -652,9 +654,10 @@ CLASSIFY_SCALAR_FORCE_INLINE scalar_span trim_span(const char* first, const char
     if (!first || !last || last < first)
         return scalar_span();
 
-    return TrimAsciiWhitespace
-        ? trim_ascii(first, last)
-        : scalar_span(first, last);
+    IF_CONSTEXPR(TrimAsciiWhitespace)
+        return trim_ascii(first, last);
+    else
+        return scalar_span(first, last);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_true(const char* first, const char* last, bool* out) noexcept {
@@ -1147,11 +1150,12 @@ template<bool IntegralFloatingAsInteger, typename Output>
 CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     const double parsed_float,
     Output& output) noexcept {
-    if (IntegralFloatingAsInteger)
+    IF_CONSTEXPR (IntegralFloatingAsInteger) {
         return finish_floating(std::true_type(), parsed_float, output);
-
-    output.template set<scalar_float>(parsed_float);
-    return scalar_float;
+    } else {
+        output.template set<scalar_float>(parsed_float);
+        return scalar_float;
+    }
 }
 
 } // namespace parsing
@@ -1387,10 +1391,10 @@ typedef detail::builtin_bool_policy builtin_bool_policy;
 /// Built-in conservative ISO date/date-time recognizer.
 typedef detail::builtin_timestamp_policy builtin_timestamp_policy;
 
-/// Default policy pack: timestamp, numeric, then bool.
+/// Default policy pack: numeric, timestamp, then bool.
 typedef detail::policy_pack<
-    detail::builtin_timestamp_policy,
     detail::builtin_numeric_policy<>,
+    detail::builtin_timestamp_policy,
     detail::builtin_bool_policy> builtin_policy_pack;
 
 /// Alias for the default built-in policy pack.

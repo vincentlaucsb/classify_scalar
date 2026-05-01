@@ -142,8 +142,8 @@ auto kind = classify_scalar::classify_scalar<app_scalar_kind>(
     outputs,
     classify_scalar::policy_pack<
         telephone_policy,
-        classify_scalar::builtin_timestamp_policy,
         classify_scalar::builtin_numeric_policy<>,
+        classify_scalar::builtin_timestamp_policy,
         classify_scalar::builtin_bool_policy>());
 ```
 
@@ -174,9 +174,9 @@ to the built-in numeric, bool, and timestamp policies.
 ## Design
 
 The classifier uses compile-time ASCII tables for leading-byte dispatch. The
-top-level classifier selects a parser family such as timestamp, bool, or
-numeric, and the built-in numeric policy owns the decimal, exponent, and
-hex-prefix scan.
+top-level classifier selects a parser family such as numeric, timestamp, or
+bool, and the built-in numeric policy owns the decimal, exponent, and hex-prefix
+scan.
 Custom policies receive a mutable parse state with raw pointer context
 (`first`, `last`, `current`) and scanner facts such as the first sign.
 User policy packs are ordered by priority: the first policy whose
@@ -185,9 +185,8 @@ User policy packs are ordered by priority: the first policy whose
 the pack falls through to the next policy that matches the same leading byte.
 
 Integer conversion uses the bundled parser in all language modes. When compiled
-as C++17 or newer, floating-point conversion uses `std::from_chars` where the
-standard library provides a real implementation; older builds use the bundled
-fallback parser.
+as C++17 or newer, floating-point conversion uses `std::from_chars`; older
+builds use the bundled fallback parser.
 
 Decimal integer literals outside int64 classify as `scalar_bigint` without
 allocating or storing the full integer text. Hexadecimal inference is limited to
@@ -200,8 +199,8 @@ public classifier template knob; scalar families are selected by policy pack.
 
 ```cpp
 using no_bool_pack = classify_scalar::policy_pack<
-    classify_scalar::builtin_timestamp_policy,
-    classify_scalar::builtin_numeric_policy<>>;
+    classify_scalar::builtin_numeric_policy<>,
+    classify_scalar::builtin_timestamp_policy>;
 
 auto no_bools = classify_scalar::classify_scalar(
     "true",
@@ -248,6 +247,26 @@ using floating_syntax_pack = classify_scalar::policy_pack<
     classify_scalar::builtin_numeric_policy<'.', false>>;
 ```
 
+## Benchmarks
+
+The benchmark suite lives in `benchmarks/` and compares the default classifier,
+numeric-only policy packs, a copy of csv-parser's old `data_type()` logic, and
+plain `std::from_chars` parse paths.
+
+The practical takeaways:
+
+- Numeric-first policy order keeps timestamp support cheap. If your data has
+  numbers but no timestamps, incidental ISO timestamp handling adds little to
+  the common numeric path.
+- `numeric_policy_pack` is available when an integration wants only
+  null/string/int/float/bigint behavior.
+- Float classification scans first, then calls `std::from_chars` once the input
+  is known to be float-shaped. The classifier is only marginally more expensive
+  than parsing directly, while also returning scalar kind information.
+- Default classification includes bool, ISO timestamp, `0x` hex, bigint, and
+  string fallback behavior; direct `from_chars` benchmarks are useful baselines,
+  not equivalent feature sets.
+
 ## Standards
 
  * The public header remains C++11 compatible. The core API and implementation use
@@ -257,7 +276,8 @@ overloads.
  * C++20 builds add concepts to improve diagnostics for malformed
 custom policy packs.
 
-We use `std::from_chars` for floating point parsing where available, but fall back to a hand-rolled verison otherwise.
+C++17 and newer builds use `std::from_chars` for floating point parsing. C++11
+and C++14 builds use the bundled fallback parser.
 
 The header defines `CLASSIFY_SCALAR_VERSION_MAJOR`,
 `CLASSIFY_SCALAR_VERSION_MINOR`, `CLASSIFY_SCALAR_VERSION_PATCH`, and numeric

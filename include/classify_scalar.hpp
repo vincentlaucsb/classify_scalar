@@ -485,6 +485,14 @@ struct parse_state {
     Sign sign;
 };
 
+struct sign_table_type {
+    parse_state::Sign values[256];
+
+    CLASSIFY_SCALAR_CONSTEXPR_14 parse_state::Sign operator[](unsigned char value) const noexcept {
+        return values[value];
+    }
+};
+
 #ifdef CLASSIFY_SCALAR_HAS_CXX20
 template<typename Policy>
 concept scalar_policy = requires(
@@ -605,6 +613,21 @@ CLASSIFY_SCALAR_FORCE_INLINE const dispatch_table_type& dispatch_table() noexcep
     return table;
 }
 
+template<std::size_t... Indexes>
+CLASSIFY_SCALAR_CONSTEXPR_14 sign_table_type build_sign_table(index_sequence<Indexes...>) noexcept {
+    return sign_table_type{{
+        (static_cast<unsigned char>(Indexes) == static_cast<unsigned char>('+') ? parse_state::positive_sign :
+        static_cast<unsigned char>(Indexes) == static_cast<unsigned char>('-') ? parse_state::negative_sign :
+        parse_state::no_sign)...
+    }};
+}
+
+CLASSIFY_SCALAR_FORCE_INLINE const sign_table_type& sign_table() noexcept {
+    static CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 sign_table_type table =
+        build_sign_table(typename make_index_sequence<256>::type());
+    return table;
+}
+
 CLASSIFY_SCALAR_CONSTEXPR_14 std::array<char, 256> create_ascii_lower_table() noexcept {
     std::array<char, 256> table = {};
     for (std::size_t i = 0; i < table.size(); ++i) {
@@ -663,10 +686,9 @@ namespace parsing {
 
 CLASSIFY_SCALAR_FORCE_INLINE const char* apply_leading_sign(parse_state& state) noexcept {
     const unsigned char first_char = static_cast<unsigned char>(*state.first);
-    if (first_char == '+' || first_char == '-') {
-        state.sign = first_char == '-'
-            ? parse_state::negative_sign
-            : parse_state::positive_sign;
+    const parse_state::Sign sign = sign_table()[first_char];
+    if (sign != parse_state::no_sign) {
+        state.sign = sign;
         state.numeric_first = state.sign == parse_state::negative_sign
             ? state.first
             : state.first + 1;
@@ -1030,8 +1052,9 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_ascii(
             return false;
 
         bool exponent_negative = false;
-        if (*current == '+' || *current == '-') {
-            exponent_negative = *current == '-';
+        const parse_state::Sign exponent_sign = sign_table()[static_cast<unsigned char>(*current)];
+        if (exponent_sign != parse_state::no_sign) {
+            exponent_negative = exponent_sign == parse_state::negative_sign;
             ++current;
             if (current == last)
                 return false;

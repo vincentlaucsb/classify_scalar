@@ -55,6 +55,33 @@ const std::vector<bench_case>& mixed_cases() {
     return cases;
 }
 
+const std::vector<bench_case>& mixed_cases_no_timestamp() {
+    static const std::vector<bench_case> cases = {
+        {""},
+        {"   "},
+        {"hello"},
+        {"true"},
+        {"FALSE"},
+        {"0"},
+        {"42"},
+        {"-17"},
+        {"2147483647"},
+        {"-2147483648"},
+        {"9223372036854775807"},
+        {"0x10"},
+        {"0x1e"},
+        {"-0X80000000"},
+        {"3.14159"},
+        {"-1.25e2"},
+        {"1e-3"},
+        {"  12345  "},
+        {"510 123 4567"},
+        {"0xgg"},
+        {"not-a-number"},
+    };
+    return cases;
+}
+
 const std::vector<bench_case>& int_parse_cases() {
     static const std::vector<bench_case> cases = {
         {"0"},
@@ -559,8 +586,7 @@ double parse_float_from_chars(std::string_view value) {
 }
 
 template<typename Classifier>
-void run_classifier(benchmark::State& state, Classifier classifier) {
-    const auto& cases = mixed_cases();
+void run_classifier(benchmark::State& state, const std::vector<bench_case>& cases, Classifier classifier) {
     std::size_t i = 0;
     int sink = 0;
 
@@ -597,23 +623,31 @@ void run_parser(benchmark::State& state, const std::vector<bench_case>& cases, P
 } // namespace
 
 static void BM_classify_scalar(benchmark::State& state) {
-    run_classifier(state, classify_current);
+    run_classifier(state, mixed_cases(), classify_current);
+}
+
+static void BM_classify_scalar_no_timestamp_load(benchmark::State& state) {
+    run_classifier(state, mixed_cases_no_timestamp(), classify_current);
 }
 
 static void BM_classify_scalar_no_timestamp(benchmark::State& state) {
-    run_classifier(state, classify_current_no_timestamp);
+    run_classifier(state, mixed_cases(), classify_current_no_timestamp);
 }
 
 static void BM_classify_scalar_numeric_only(benchmark::State& state) {
-    run_classifier(state, classify_current_numeric_only);
+    run_classifier(state, mixed_cases(), classify_current_numeric_only);
 }
 
 static void BM_previous_data_type(benchmark::State& state) {
-    run_classifier(state, previous_data_type::classify);
+    run_classifier(state, mixed_cases(), previous_data_type::classify);
+}
+
+static void BM_previous_data_type_no_timestamp_load(benchmark::State& state) {
+    run_classifier(state, mixed_cases_no_timestamp(), previous_data_type::classify);
 }
 
 static void BM_naive_from_chars(benchmark::State& state) {
-    run_classifier(state, classify_naive_from_chars);
+    run_classifier(state, mixed_cases(), classify_naive_from_chars);
 }
 
 static void BM_parse_int_classify_scalar(benchmark::State& state) {
@@ -633,9 +667,11 @@ static void BM_parse_float_from_chars(benchmark::State& state) {
 }
 
 BENCHMARK(BM_classify_scalar);
+BENCHMARK(BM_classify_scalar_no_timestamp_load);
 BENCHMARK(BM_classify_scalar_no_timestamp);
 BENCHMARK(BM_classify_scalar_numeric_only);
 BENCHMARK(BM_previous_data_type);
+BENCHMARK(BM_previous_data_type_no_timestamp_load);
 BENCHMARK(BM_naive_from_chars);
 BENCHMARK(BM_parse_int_classify_scalar);
 BENCHMARK(BM_parse_int_from_chars);

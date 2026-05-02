@@ -320,9 +320,7 @@ enum class ParseFlag : unsigned char {
     /// ASCII digit bytes '0' through '9'.
     digit,
     /// Active decimal separator byte, '.' by default.
-    decimal,
-    /// Exponent marker bytes 'e' and 'E'.
-    might_be_exponential
+    decimal
 };
 
 namespace detail {
@@ -431,7 +429,6 @@ template<char DecimalSymbol>
 CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 ParseFlag classify_ascii_char(const unsigned char c) noexcept {
     return c >= '0' && c <= '9' ? ParseFlag::digit
         : c == static_cast<unsigned char>(DecimalSymbol) ? ParseFlag::decimal
-        : c == 'e' || c == 'E' ? ParseFlag::might_be_exponential
         : ParseFlag::other;
 }
 
@@ -1232,19 +1229,6 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind on_exponent(
-        parse_state& state,
-        Output& output) const noexcept {
-        if (state.current == state.first || state.current + 1 == state.last)
-            return scalar_string;
-
-        double parsed_float = 0;
-        return parsing::parse_floating<DecimalSymbol>(state, &parsed_float)
-            ? parsing::finish_floating<IntegralFloatingAsInteger>(parsed_float, output)
-            : scalar_string;
-    }
-
-    template<typename Output>
     CLASSIFY_SCALAR_FORCE_INLINE ScalarKind scan_number(
         parse_state& state,
         const char* value_first,
@@ -1272,10 +1256,10 @@ struct builtin_numeric_policy {
             }
             case ParseFlag::decimal:
                 return on_decimal(state, output);
-            case ParseFlag::might_be_exponential:
-                return on_exponent(state, output);
             case ParseFlag::other:
             default:
+                if (ascii_lower_chars[c] == 'e')
+                    return on_decimal(state, output);
                 return scalar_string;
             }
         }

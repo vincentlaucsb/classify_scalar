@@ -81,6 +81,8 @@ TEST_CASE("classifies exponential notation") {
 }
 
 TEST_CASE("malformed exponential notation falls back to string") {
+    CHECK(classify_scalar::classify_scalar("E23") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("e23") == scalar_string);
     CHECK(classify_scalar::classify_scalar("1e") == scalar_string);
     CHECK(classify_scalar::classify_scalar("1e    -3") == scalar_string);
     CHECK(classify_scalar::classify_scalar("1e-") == scalar_string);

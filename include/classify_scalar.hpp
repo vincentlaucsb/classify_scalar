@@ -1246,7 +1246,7 @@ struct builtin_numeric_policy {
             case ParseFlag::digit: {
                 const unsigned char digit = static_cast<unsigned char>(c - static_cast<unsigned char>('0'));
                 if (!overflow) {
-                    // Precomputing cutoff/cutlim looked cleaner but was measurably slower on MSVC.
+                    // Precomputing cutoff/cutlim, digit-count gating, and cold overflow helpers all benchmarked slower.
                     if (acc > (limit - digit) / 10U)
                         overflow = true;
                     else

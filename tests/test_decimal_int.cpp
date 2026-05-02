@@ -34,5 +34,7 @@ TEST_CASE("decimal integer overflow is classified as bigint") {
     CHECK(classify_scalar::classify_scalar("-9223372036854775809") == scalar_bigint);
     CHECK(classify_scalar::classify_scalar("1234567890123456789012345678901234567890") == scalar_bigint);
     CHECK(classify_scalar::classify_scalar("-1234567890123456789012345678901234567890") == scalar_bigint);
+    CHECK(classify_scalar::classify_scalar("000000000000000000000000001") == scalar_int8);
+    CHECK(classify_scalar::classify_scalar("0009223372036854775808") == scalar_bigint);
     CHECK(classify_scalar::classify_scalar("12345678901234567890abc") == scalar_string);
 }

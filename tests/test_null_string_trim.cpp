@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-using classify_scalar::scalar_int;
+using classify_scalar::scalar_int8;
 using classify_scalar::scalar_null;
 using classify_scalar::scalar_string;
 
@@ -20,11 +20,11 @@ TEST_CASE("trims ASCII whitespace by default") {
     long double number = 0;
     bool boolean = false;
 
-    CHECK(classify_scalar::classify_scalar("   42  ", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
+    CHECK(classify_scalar::classify_scalar("   42  ", classify_scalar::output_refs(number, integer, boolean)) == scalar_int8);
     CHECK(integer == 42);
 }
 
 TEST_CASE("can preserve exact scalar boundaries") {
     CHECK(classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>("   42  ") == scalar_string);
-    CHECK(classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>("42") == scalar_int);
+    CHECK(classify_scalar::classify_scalar<classify_scalar::ScalarKind, false>("42") == scalar_int8);
 }

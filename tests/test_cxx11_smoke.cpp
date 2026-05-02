@@ -27,7 +27,7 @@ int main() {
 
     classify_scalar::builtin_output_refs outputs = classify_scalar::output_refs(number, integer, boolean);
 
-    if (classify_literal("42", 2, outputs) != classify_scalar::scalar_int) {
+    if (classify_literal("42", 2, outputs) != classify_scalar::scalar_int8) {
         return 1;
     }
     if (integer != 42) {

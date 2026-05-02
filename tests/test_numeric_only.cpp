@@ -6,7 +6,7 @@
 #include <cstdint>
 
 using classify_scalar::scalar_float;
-using classify_scalar::scalar_int;
+using classify_scalar::scalar_int8;
 using classify_scalar::scalar_null;
 using classify_scalar::scalar_string;
 
@@ -22,7 +22,7 @@ TEST_CASE("numeric-only classification excludes bool and timestamp policies") {
     CHECK(classify_scalar::classify_scalar(
         "42",
         classify_scalar::classify_only_output(),
-        classify_scalar::numeric_policy_pack()) == scalar_int);
+        classify_scalar::numeric_policy_pack()) == scalar_int8);
     CHECK(classify_scalar::classify_scalar(
         "3.14",
         classify_scalar::classify_only_output(),

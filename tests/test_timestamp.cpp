@@ -2,7 +2,8 @@
 
 #include <classify_scalar.hpp>
 
-using classify_scalar::scalar_int;
+using classify_scalar::scalar_int8;
+using classify_scalar::scalar_int32;
 using classify_scalar::scalar_string;
 using classify_scalar::scalar_timestamp;
 
@@ -39,8 +40,8 @@ TEST_CASE("malformed ISO timestamps fall back to string") {
 }
 
 TEST_CASE("timestamp policy falls through to numeric parsing") {
-    CHECK(classify_scalar::classify_scalar("20240131") == scalar_int);
-    CHECK(classify_scalar::classify_scalar("42") == scalar_int);
+    CHECK(classify_scalar::classify_scalar("20240131") == scalar_int32);
+    CHECK(classify_scalar::classify_scalar("42") == scalar_int8);
 }
 
 TEST_CASE("timestamp recognition can be disabled") {

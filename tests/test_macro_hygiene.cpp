@@ -22,5 +22,5 @@ TEST_CASE("classify_scalar compatibility macros do not claim generic host names"
     CHECK(CLASSIFY_SCALAR_TEST_STRINGIFY(CONSTEXPR_VALUE_14) == std::string("host_constexpr_value_14"));
     CHECK(CLASSIFY_SCALAR_TEST_STRINGIFY(CONSTEXPR_17) == std::string("host_constexpr_17"));
     CHECK(CLASSIFY_SCALAR_TEST_STRINGIFY(CONSTEXPR_VALUE_17) == std::string("host_constexpr_value_17"));
-    CHECK(classify_scalar::classify_scalar("42") == classify_scalar::scalar_int);
+    CHECK(classify_scalar::classify_scalar("42") == classify_scalar::scalar_int8);
 }

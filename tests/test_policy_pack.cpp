@@ -55,7 +55,7 @@ TEST_CASE("policy packs can add custom leading-byte classifiers") {
     CHECK(classify_scalar::classify_scalar<app_scalar_kind>(
         "42",
         classify_scalar::classify_only_output(),
-        pack) == app_scalar_kind::scalar_int);
+        pack) == app_scalar_kind::scalar_int8);
 
     CHECK(classify_scalar::classify_scalar<app_scalar_kind>(
         "true",

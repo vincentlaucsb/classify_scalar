@@ -4,7 +4,9 @@
 
 #include <cstdint>
 
-using classify_scalar::scalar_int;
+using classify_scalar::scalar_int8;
+using classify_scalar::scalar_int16;
+using classify_scalar::scalar_int32;
 using classify_scalar::scalar_string;
 
 TEST_CASE("classifies hexadecimal integers") {
@@ -12,20 +14,20 @@ TEST_CASE("classifies hexadecimal integers") {
     long double number = 0;
     bool boolean = false;
 
-    CHECK(classify_scalar::classify_scalar("0x10", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
+    CHECK(classify_scalar::classify_scalar("0x10", classify_scalar::output_refs(number, integer, boolean)) == scalar_int8);
     CHECK(integer == 16);
     CHECK(classify_scalar::classify_scalar(
         "0x10",
         classify_scalar::classify_only_output(),
-        classify_scalar::numeric_policy_pack()) == scalar_int);
+        classify_scalar::numeric_policy_pack()) == scalar_int8);
 
-    CHECK(classify_scalar::classify_scalar("0x1e", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
+    CHECK(classify_scalar::classify_scalar("0x1e", classify_scalar::output_refs(number, integer, boolean)) == scalar_int8);
     CHECK(integer == 30);
 
-    CHECK(classify_scalar::classify_scalar("0xff", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
+    CHECK(classify_scalar::classify_scalar("0xff", classify_scalar::output_refs(number, integer, boolean)) == scalar_int16);
     CHECK(integer == 255);
 
-    CHECK(classify_scalar::classify_scalar("-0X80000000", classify_scalar::output_refs(number, integer, boolean)) == scalar_int);
+    CHECK(classify_scalar::classify_scalar("-0X80000000", classify_scalar::output_refs(number, integer, boolean)) == scalar_int32);
     CHECK(integer == -2147483648LL);
 }
 

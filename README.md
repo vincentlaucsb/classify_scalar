@@ -25,13 +25,13 @@ auto whitespace = classify_scalar("   ");             // scalar_null
 auto yes = classify_scalar("true");                   // scalar_bool
 auto no = classify_scalar("FALSE");                   // scalar_bool
 
-auto integer_kind = classify_scalar("42");            // scalar_int
-auto negative_kind = classify_scalar("-17");          // scalar_int
-auto hex_kind = classify_scalar("0x2a");              // scalar_int
+auto integer_kind = classify_scalar("42");            // scalar_int8
+auto negative_kind = classify_scalar("-17");          // scalar_int8
+auto hex_kind = classify_scalar("0x2a");              // scalar_int8
 auto too_large = classify_scalar("9223372036854775808"); // scalar_bigint
 
 auto float_kind = classify_scalar("3.14159");         // scalar_float
-auto integral_exp = classify_scalar("-1.25e2");       // scalar_int
+auto integral_exp = classify_scalar("-1.25e2");       // scalar_int8
 auto fractional_exp = classify_scalar("1e-3");        // scalar_float
 
 auto date = classify_scalar("2024-01-31");            // scalar_timestamp
@@ -45,7 +45,7 @@ Timestamp offsets may use either `Z`, `+HH:MM`/`-HH:MM`, or compact
 ASCII boundary whitespace is trimmed by default:
 
 ```cpp
-auto trimmed = classify_scalar::classify_scalar("  42  ");       // scalar_int
+auto trimmed = classify_scalar::classify_scalar("  42  ");       // scalar_int8
 auto exact = classify_scalar::classify_scalar<ScalarKind, false>("  42  ");  // scalar_string
 ```
 
@@ -57,16 +57,14 @@ stored:
 std::int64_t integer = 0;
 long double number = 0;
 bool boolean = false;
-IntegerKind integer_kind = integer_none;
 
 auto kind = classify_scalar::classify_scalar(
     "  -0x2a  ",
-    classify_scalar::output_refs(number, integer, boolean, integer_kind));
+    classify_scalar::output_refs(number, integer, boolean));
 
-// kind == scalar_int
+// kind == scalar_int8
 // integer == -42
 // number == -42.0L
-// integer_kind == integer_int8
 ```
 
 ## Explicit Parsing
@@ -97,10 +95,13 @@ classify_scalar::parse_scalar<classify_scalar::scalar_timestamp>(
     timestamp);
 ```
 
-`parse_scalar<scalar_int>` reuses the normal numeric classifier. Use `parse_hex`
-when bare hexadecimal should be accepted explicitly without making inference
-classify `DEADBEEF` as an integer. The parser supports optional
-ASCII-boundary trimming through its second template argument.
+`parse_scalar<scalar_int64>` reuses the normal numeric classifier and accepts
+any signed integer width that fits in int64. `parse_scalar<std::int32_t>` and
+other signed C++ integer types are also supported when you want boundary checks
+for a concrete storage type. Use `parse_hex` when bare hexadecimal should be
+accepted explicitly without making inference classify `DEADBEEF` as an integer.
+The parser supports optional ASCII-boundary trimming through its second template
+argument.
 `parse_scalar<scalar_timestamp>` returns a JavaScript-style Unix timestamp in
 milliseconds, normalized to UTC, and currently requires a non-negative result
 because the natural home is `std::uint64_t`. `scalar_bigint` remains
@@ -154,7 +155,7 @@ auto kind = classify_scalar::classify_scalar<app_scalar_kind>(
 `CLASSIFY_SCALAR_BUILTINS` copies the library's built-in kind ids into your enum
 and positions the next enum value at `scalar_custom_begin`. The typed
 `classify_scalar<app_scalar_kind>(...)` overload returns your enum directly, so
-built-ins return values such as `app_scalar_kind::scalar_int` and custom
+built-ins return values such as `app_scalar_kind::scalar_int8` and custom
 policies can return values such as `app_scalar_kind::telephone`.
 
 Custom policies can provide their own output object with matching `set_*` hooks.
@@ -192,9 +193,13 @@ Integer conversion uses the bundled parser in all language modes. When compiled
 as C++17 or newer, floating-point conversion uses `std::from_chars`; older
 builds use the bundled fallback parser.
 
-Decimal integer literals outside int64 classify as `scalar_bigint` without
-allocating or storing the full integer text. Hexadecimal inference is limited to
-`0x`/`0X` prefixes by default; bare hex strings such as `FF` remain strings.
+Decimal and `0x` integer literals classify to the narrowest signed width
+(`scalar_int8`, `scalar_int16`, `scalar_int32`, or `scalar_int64`). Decimal
+integer literals outside int64 classify as `scalar_bigint` without allocating or
+storing the full integer text. Unsigned scalar ids are reserved for a future
+unsigned policy, but the default classifier currently reports signed kinds.
+Hexadecimal inference is limited to `0x`/`0X` prefixes by default; bare hex
+strings such as `FF` remain strings.
 
 ## Policy Packs
 
@@ -242,9 +247,10 @@ double parsed = 0;
 bool ok = classify_scalar::parse_float(first, last, parsed, decimal_symbol);
 ```
 
-The default numeric policy returns `scalar_int` for integral-valued floating
-syntax such as `1e3` and `-1.25e2`. If an integration needs scientific or decimal
-syntax to stay `scalar_float`, use the second numeric policy template argument:
+The default numeric policy returns the narrowest signed integer kind for
+integral-valued floating syntax such as `1e3` and `-1.25e2`. If an integration
+needs scientific or decimal syntax to stay `scalar_float`, use the second
+numeric policy template argument:
 
 ```cpp
 using floating_syntax_pack = classify_scalar::policy_pack<

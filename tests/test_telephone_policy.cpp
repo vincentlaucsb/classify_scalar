@@ -224,7 +224,7 @@ TEST_CASE("custom telephone policy falls through to built-ins") {
     CHECK(classify_scalar::classify_scalar<MyTypes>(
         "42",
         telephone_classify_only_output(),
-        telephone_pack()) == MyTypes::scalar_int);
+        telephone_pack()) == MyTypes::scalar_int8);
 
     CHECK(classify_scalar::classify_scalar<MyTypes>(
         "2024-01-31",
@@ -255,7 +255,7 @@ TEST_CASE("custom telephone policy can extend output refs") {
     CHECK(classify_scalar::classify_scalar<MyTypes>(
         "42",
         outputs,
-        telephone_pack()) == MyTypes::scalar_int);
+        telephone_pack()) == MyTypes::scalar_int8);
     CHECK(integer == 42);
     CHECK(number == 42.0L);
 }

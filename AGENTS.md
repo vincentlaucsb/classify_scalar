@@ -22,8 +22,8 @@ from csv-parser/csvzall scalar inference work.
   numeric policy recognizes `0x` hexadecimal integers and does not recognize
   bare hex by default. Its first template argument selects the decimal
   separator, such as `builtin_numeric_policy<','>`, and its second template
-  argument controls whether integral-valued floating syntax returns
-  `scalar_int`. Keep runtime dispatchers tiny and explicit, such as the provided
+  argument controls whether integral-valued floating syntax returns a signed
+  integer-width scalar kind. Keep runtime dispatchers tiny and explicit, such as the provided
   dot/comma numeric decimal-symbol helper.
 - Use prefixed local compatibility macros (`CLASSIFY_SCALAR_CONSTEXPR_14`,
   `CLASSIFY_SCALAR_CONSTEXPR_VALUE_14`,
@@ -63,9 +63,11 @@ from csv-parser/csvzall scalar inference work.
   their own output objects with matching hooks. Prefer showing extension by
   deriving from `builtin_output_refs` and adding domain-specific setters, so
   built-in numeric/bool storage keeps working.
-- Return integer kind ids. The built-in enum names reserve the default ids.
-  Decimal integers outside int64 classify as `scalar_bigint`; do not allocate or
-  store the full bigint value on the built-in path.
+- Return exact signed integer-width scalar ids (`scalar_int8`, `scalar_int16`,
+  `scalar_int32`, or `scalar_int64`). Reserve unsigned ids for a future unsigned
+  policy, but do not classify to them until that policy exists. Decimal integers
+  outside int64 classify as `scalar_bigint`; do not allocate or store the full
+  bigint value on the built-in path.
   Custom policies should define their own enum values with
   `CLASSIFY_SCALAR_BUILTINS` and can return that enum directly when callers use
   the typed classifier template.

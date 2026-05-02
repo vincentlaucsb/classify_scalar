@@ -285,7 +285,6 @@ struct builtin_output_refs {
     template<ScalarKind Kind>
     typename std::enable_if<detail::integer::is_signed_integer_kind(Kind), void>::type set(std::int64_t value) const noexcept {
         integer = value;
-        number = static_cast<long double>(value);
     }
 
     template<ScalarKind Kind>
@@ -625,10 +624,7 @@ CLASSIFY_SCALAR_CONSTEXPR_14 std::array<bool, 256> create_ascii_digits_table() n
     return table;
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE bool is_ascii_digit(const unsigned char c) noexcept {
-    static CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 std::array<bool, 256> ascii_digits = create_ascii_digits_table();
-    return ascii_digits[c];
-}
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_17 std::array<bool, 256> ascii_digits = create_ascii_digits_table();
 
 CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 unsigned char invalid_digit_value = 255U;
 
@@ -754,7 +750,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_digits(const char* value, int& out) noex
     int parsed = 0;
     for (std::size_t i = 0; i < Count; ++i) {
         const unsigned char c = static_cast<unsigned char>(value[i]);
-        if (!is_ascii_digit(c))
+        if (!ascii_digits[c])
             return false;
 
         parsed = (parsed * 10) + (value[i] - '0');
@@ -832,7 +828,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_iso_timestamp(
             if (current != last && *current == '.') {
                 ++current;
                 const char* fraction_first = current;
-                while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+                while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
                     if (current - fraction_first < 3)
                         millisecond = millisecond * 10 + (*current - '0');
                     ++current;
@@ -937,13 +933,13 @@ CLASSIFY_SCALAR_FORCE_INLINE integer_parse_result parse_integer_digits(
     assert(first != last);
 
     const std::uint64_t limit = state.sign == parse_state::negative_sign ? int64_negative_limit : int64_positive_limit;
-
     std::uint64_t acc = 0;
     for (const char* current = first; current != last; ++current) {
         const unsigned char digit = digit_value(*current);
         if (digit >= base)
             return integer_parse_invalid;
 
+        // Precomputing cutoff/cutlim looked cleaner but was measurably slower on MSVC.
         if (acc > (limit - digit) / base)
             return integer_parse_overflow;
 
@@ -1012,7 +1008,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_ascii(
     long double parsed = 0.0L;
     bool has_digit = false;
 
-    while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+    while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
         parsed = (parsed * 10.0L) + static_cast<unsigned char>(*current - '0');
         has_digit = true;
         ++current;
@@ -1021,7 +1017,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_ascii(
     if (current != last && static_cast<unsigned char>(*current) == static_cast<unsigned char>(DecimalSymbol)) {
         ++current;
         long double place = 0.1L;
-        while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+        while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
             parsed += static_cast<unsigned char>(*current - '0') * place;
             place *= 0.1L;
             has_digit = true;
@@ -1046,7 +1042,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_floating_ascii(
         }
 
         int exponent = 0;
-        while (current != last && is_ascii_digit(static_cast<unsigned char>(*current))) {
+        while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
             if (exponent > 500)
                 return false;
 
@@ -1284,7 +1280,7 @@ struct builtin_numeric_policy {
         for (const char* current = scan_first; current != state.last; ++current) {
             state.current = current;
             const unsigned char c = static_cast<unsigned char>(*current);
-            if (is_ascii_digit(c))
+            if (ascii_digits[c])
                 continue;
 
             const ParseFlag flag = parse_table<DecimalSymbol>()[c];
@@ -1319,7 +1315,7 @@ struct builtin_numeric_policy {
             return on_decimal(state, output);
         }
 
-        if (!is_ascii_digit(value_first_char))
+        if (!ascii_digits[value_first_char])
             return scalar_string;
 
         return scan_number(state, value_first + 1, output);

@@ -64,8 +64,12 @@ auto kind = classify_scalar::classify_scalar(
 
 // kind == scalar_int8
 // integer == -42
-// number == -42.0L
+// number is unchanged; floating-point values write to number
 ```
+
+Integer classification writes the `integer` output only. It deliberately does
+not also convert integers to `long double`; callers that want floating storage
+can parse or cast explicitly.
 
 ## Explicit Parsing
 

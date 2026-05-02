@@ -257,5 +257,4 @@ TEST_CASE("custom telephone policy can extend output refs") {
         outputs,
         telephone_pack()) == MyTypes::scalar_int8);
     CHECK(integer == 42);
-    CHECK(number == 42.0L);
 }

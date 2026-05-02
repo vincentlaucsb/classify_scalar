@@ -72,7 +72,6 @@ TEST_CASE("classifies exponential notation") {
 
     CHECK(classify_scalar::classify_scalar("-1.25e2", classify_scalar::output_refs(number, integer, boolean)) == scalar_int8);
     CHECK(integer == -125);
-    CHECK(number == -125.0L);
 
     CHECK(classify_scalar::classify_scalar("1e3", classify_scalar::output_refs(number, integer, boolean)) == scalar_int16);
     CHECK(integer == 1000);

@@ -13,12 +13,12 @@ using classify_scalar::scalar_string;
 
 TEST_CASE("classifies decimal integers and preserves signed minimum") {
     std::int64_t integer = 0;
-    long double number = 0;
+    long double number = 99.0L;
     bool boolean = false;
 
     CHECK(classify_scalar::classify_scalar("-2147483648", classify_scalar::output_refs(number, integer, boolean)) == scalar_int32);
     CHECK(integer == -2147483648LL);
-    CHECK(number == -2147483648.0L);
+    CHECK(number == 99.0L);
 
     CHECK(classify_scalar::classify_scalar("+42", classify_scalar::output_refs(number, integer, boolean)) == scalar_int8);
     CHECK(integer == 42);

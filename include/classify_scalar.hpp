@@ -147,12 +147,14 @@ enum ScalarKind : int {
     scalar_int64 = 9,
     /// Reserved for future unsigned 64-bit integer classification.
     scalar_uint64 = 10,
-    /// Floating-point literal parsed as double.
-    scalar_float = 11,
-    /// Conservative ISO date/date-time value, stored as UTC unix milliseconds when parsed.
-    scalar_timestamp = 12,
     /// Well-formed decimal integer outside the int64 range.
-    scalar_bigint = 13,
+    scalar_bigint = 11,
+    /// Floating-point literal parsed as double.
+    scalar_float = 12,
+	/// High precision floating-point literal (reserved for future use, not currently returned by classify_scalar).
+    scalar_bigfloat = 13,
+    /// Conservative ISO date/date-time value, stored as UTC unix milliseconds when parsed.
+    scalar_timestamp = 14,
     /// Reserved sentinel for invalid integration results.
     scalar_invalid = -2,
     /// First id available for user-defined scalar kinds.
@@ -172,9 +174,10 @@ enum ScalarKind : int {
     scalar_uint32 = ::classify_scalar::scalar_uint32, \
     scalar_int64 = ::classify_scalar::scalar_int64, \
     scalar_uint64 = ::classify_scalar::scalar_uint64, \
-    scalar_float = ::classify_scalar::scalar_float, \
-    scalar_timestamp = ::classify_scalar::scalar_timestamp, \
     scalar_bigint = ::classify_scalar::scalar_bigint, \
+    scalar_float = ::classify_scalar::scalar_float, \
+    scalar_bigfloat = ::classify_scalar::scalar_bigfloat, \
+    scalar_timestamp = ::classify_scalar::scalar_timestamp, \
     scalar_invalid = ::classify_scalar::scalar_invalid, \
     scalar_custom_begin = ::classify_scalar::scalar_custom_begin - 1
 
@@ -193,6 +196,22 @@ struct classify_only_output {
     void set(T) const noexcept {}
 };
 
+namespace detail {
+namespace integer {
+
+/// Mapping of integer kinds to their rank for easy comparison.
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::array<unsigned, 9> kind_rank_table = {{
+    1U, // scalar_int8
+    1U, // scalar_uint8
+    2U, // scalar_int16
+    2U, // scalar_uint16
+    3U, // scalar_int32
+    3U, // scalar_uint32
+    4U, // scalar_int64
+    4U, // scalar_uint64
+    5U  // scalar_bigint
+}};
+
 /// True when kind is one of the built-in signed integer widths.
 CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 bool is_signed_integer_kind(ScalarKind kind) noexcept {
     return kind == scalar_int8 || kind == scalar_int16 || kind == scalar_int32 || kind == scalar_int64;
@@ -210,17 +229,9 @@ CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 bool is_integer_kind(ScalarKi
 
 /// Rank integer widths from smallest to largest; non-integers return 0.
 CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 unsigned integer_kind_rank(ScalarKind kind) noexcept {
-    return kind == scalar_int8 || kind == scalar_uint8
-        ? 1U
-        : kind == scalar_int16 || kind == scalar_uint16
-        ? 2U
-        : kind == scalar_int32 || kind == scalar_uint32
-        ? 3U
-        : kind == scalar_int64 || kind == scalar_uint64
-        ? 4U
-        : kind == scalar_bigint
-        ? 5U
-        : 0U;
+    constexpr auto offset = static_cast<unsigned>(scalar_int8);
+    return kind >= scalar_int8 && kind <= scalar_bigint ?
+         kind_rank_table[static_cast<unsigned>(kind) - offset] : 0U;
 }
 
 /// True when parsed_integer_kind can be stored by target_integer_kind.
@@ -234,17 +245,27 @@ CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 bool integer_kind_fits_in(
 
 /// Return the narrowest signed integer scalar kind that can store value.
 CLASSIFY_SCALAR_CONST CLASSIFY_SCALAR_CONSTEXPR_14 ScalarKind classify_integer_kind(std::int64_t value) noexcept {
+    if (value >= 0) {
+        return value <= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
+            ? scalar_int8
+            : value <= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
+            ? scalar_int16
+            : value <= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
+            ? scalar_int32
+            : scalar_int64;
+    }
+
     return value >= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min())
-            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())
         ? scalar_int8
         : value >= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min())
-            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())
         ? scalar_int16
         : value >= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min())
-            && value <= static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())
         ? scalar_int32
         : scalar_int64;
 }
+
+} // namespace integer
+} // namespace detail
 
 /// Built-in output adapter for numeric, bool, and timestamp storage.
 struct builtin_output_refs {
@@ -262,7 +283,7 @@ struct builtin_output_refs {
           timestamp(&timestamp_) {}
 
     template<ScalarKind Kind>
-    typename std::enable_if<is_signed_integer_kind(Kind), void>::type set(std::int64_t value) const noexcept {
+    typename std::enable_if<detail::integer::is_signed_integer_kind(Kind), void>::type set(std::int64_t value) const noexcept {
         integer = value;
         number = static_cast<long double>(value);
     }
@@ -1146,22 +1167,8 @@ template<typename Output>
 CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_integer(
     const std::int64_t parsed_integer,
     Output& output) noexcept {
-    const ScalarKind kind = classify_integer_kind(parsed_integer);
-    switch (kind) {
-    case scalar_int8:
-        output.template set<scalar_int8>(parsed_integer);
-        return scalar_int8;
-    case scalar_int16:
-        output.template set<scalar_int16>(parsed_integer);
-        return scalar_int16;
-    case scalar_int32:
-        output.template set<scalar_int32>(parsed_integer);
-        return scalar_int32;
-    case scalar_int64:
-    default:
-        output.template set<scalar_int64>(parsed_integer);
-        return scalar_int64;
-    }
+    output.template set<scalar_int64>(parsed_integer);
+    return integer::classify_integer_kind(parsed_integer);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
@@ -1170,7 +1177,7 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     classify_only_output&) noexcept {
     std::int64_t parsed_integer = 0;
     if (floating_is_integral(parsed_float, &parsed_integer))
-        return classify_integer_kind(parsed_integer);
+        return integer::classify_integer_kind(parsed_integer);
 
     return scalar_float;
 }
@@ -1567,8 +1574,8 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
         builtin_output_refs(number, integer, boolean, timestamp),
         typename detail::scalar_home<Kind>::policy());
     if (kind != Kind
-            && !(Kind == scalar_float && is_signed_integer_kind(kind))
-            && !integer_kind_fits_in(kind, Kind))
+            && !(Kind == scalar_float && detail::integer::is_signed_integer_kind(kind))
+            && !detail::integer::integer_kind_fits_in(kind, Kind))
         return false;
 
     out = detail::scalar_home<Kind>::get(number, integer, timestamp, boolean);
@@ -1594,7 +1601,7 @@ CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
         last,
         output_refs(number, integer, boolean),
         numeric_policy_pack());
-    if (!is_signed_integer_kind(kind))
+    if (!detail::integer::is_signed_integer_kind(kind))
         return false;
 
     if (integer < static_cast<std::int64_t>(std::numeric_limits<IntegerType>::min())

@@ -427,7 +427,7 @@ BenchKind classify_current(std::string_view value) {
         return BenchKind::timestamp;
     case classify_scalar::scalar_string:
     default:
-        return classify_scalar::is_signed_integer_kind(kind) ? BenchKind::integer : BenchKind::string;
+        return classify_scalar::detail::integer::is_signed_integer_kind(kind) ? BenchKind::integer : BenchKind::string;
     }
 }
 
@@ -449,7 +449,7 @@ BenchKind classify_current_no_timestamp(std::string_view value) {
         return BenchKind::floating;
     case classify_scalar::scalar_string:
     default:
-        return classify_scalar::is_signed_integer_kind(kind) ? BenchKind::integer : BenchKind::string;
+        return classify_scalar::detail::integer::is_signed_integer_kind(kind) ? BenchKind::integer : BenchKind::string;
     }
 }
 
@@ -469,7 +469,7 @@ BenchKind classify_current_numeric_only(std::string_view value) {
         return BenchKind::floating;
     case classify_scalar::scalar_string:
     default:
-        return classify_scalar::is_signed_integer_kind(kind) ? BenchKind::integer : BenchKind::string;
+        return classify_scalar::detail::integer::is_signed_integer_kind(kind) ? BenchKind::integer : BenchKind::string;
     }
 }
 
@@ -523,7 +523,7 @@ std::int64_t parse_int_classify_scalar(std::string_view value) {
         classify_scalar::output_refs(number, integer, boolean),
         classify_scalar::numeric_policy_pack());
 
-    return classify_scalar::is_signed_integer_kind(kind) ? integer : 0;
+    return classify_scalar::detail::integer::is_signed_integer_kind(kind) ? integer : 0;
 }
 
 std::int64_t parse_int_from_chars(std::string_view value) {
@@ -543,7 +543,7 @@ double parse_float_classify_scalar(std::string_view value) {
         classify_scalar::output_refs(number, integer, boolean),
         classify_scalar::numeric_policy_pack());
 
-    return kind == classify_scalar::scalar_float || classify_scalar::is_signed_integer_kind(kind)
+    return kind == classify_scalar::scalar_float || classify_scalar::detail::integer::is_signed_integer_kind(kind)
         ? static_cast<double>(number)
         : 0.0;
 }

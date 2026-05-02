@@ -704,6 +704,11 @@ CLASSIFY_SCALAR_FORCE_INLINE std::uint32_t load_u32(const char* value) noexcept 
     return word;
 }
 
+CLASSIFY_SCALAR_FORCE_INLINE unsigned char decimal_digit_value(const unsigned char c) noexcept {
+    // The digit_values[] lookup is useful for generic-base parsing, but benchmarked slower in the hot decimal scanner.
+    return static_cast<unsigned char>(c - static_cast<unsigned char>('0'));
+}
+
 CLASSIFY_SCALAR_FORCE_INLINE scalar_span trim_ascii(const char* first, const char* last) noexcept {
     while (first != last && is_ascii_space(*first))
         ++first;
@@ -1252,12 +1257,45 @@ struct builtin_numeric_policy {
     }
 
     template<typename Output>
-    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind scan_number(
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind scan_short_number(
         parse_state& state,
         const char* value_first,
         Output& output) const noexcept {
-        const std::uint64_t limit = signed_integer_limits[state.sign];
         std::uint64_t acc = 0;
+
+        for (const char* current = value_first; current != state.last; ++current) {
+            state.current = current;
+            const unsigned char c = static_cast<unsigned char>(*current);
+
+            const ParseFlag flag = parse_table<DecimalSymbol>()[c];
+            switch (flag) {
+            case ParseFlag::digit:
+                acc = (acc * 10U) + parsing::decimal_digit_value(c);
+                continue;
+            case ParseFlag::decimal:
+                return on_decimal(state, output);
+            case ParseFlag::other:
+            default:
+                if (ascii_lower_chars[c] == 'e')
+                    return on_decimal(state, output);
+                return scalar_string;
+            }
+        }
+
+        state.current = state.last;
+        std::int64_t parsed_integer = state.sign == parse_state::negative_sign
+            ? -static_cast<std::int64_t>(acc)
+            : static_cast<std::int64_t>(acc);
+        return parsing::finish_integer(parsed_integer, output);
+    }
+
+    template<typename Output>
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind scan_checked_number(
+        parse_state& state,
+        const char* value_first,
+        Output& output) const noexcept {
+        std::uint64_t acc = 0;
+        const std::uint64_t limit = signed_integer_limits[state.sign];
         bool overflow = false;
 
         for (const char* current = value_first; current != state.last; ++current) {
@@ -1267,7 +1305,7 @@ struct builtin_numeric_policy {
             const ParseFlag flag = parse_table<DecimalSymbol>()[c];
             switch (flag) {
             case ParseFlag::digit: {
-                const unsigned char digit = static_cast<unsigned char>(c - static_cast<unsigned char>('0'));
+                const unsigned char digit = parsing::decimal_digit_value(c);
                 if (!overflow) {
                     // Precomputing cutoff/cutlim, digit-count gating, and cold overflow helpers all benchmarked slower.
                     if (acc > (limit - digit) / 10U)
@@ -1294,6 +1332,16 @@ struct builtin_numeric_policy {
         std::int64_t parsed_integer = 0;
         parsing::finish_signed_integer(state, acc, limit, &parsed_integer);
         return parsing::finish_integer(parsed_integer, output);
+    }
+
+    template<typename Output>
+    CLASSIFY_SCALAR_FORCE_INLINE ScalarKind scan_number(
+        parse_state& state,
+        const char* value_first,
+        Output& output) const noexcept {
+        return state.last - value_first < 19
+            ? scan_short_number(state, value_first, output)
+            : scan_checked_number(state, value_first, output);
     }
 
     template<typename Output>

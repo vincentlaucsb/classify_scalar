@@ -50,3 +50,46 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-${{ matrix.cxx_standard }} --build-config ${{ env.BUILD_TYPE }} --output-on-failure
+  asan:
+    name: ASan / Ubuntu / C++${{ matrix.cxx_standard }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx_standard: [11, 14, 17]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache CMake dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/build-asan-${{ matrix.cxx_standard }}/_deps
+          key: cmake-deps-asan-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-deps-asan-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
+            cmake-deps-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
+            cmake-deps-${{ runner.os }}-
+
+      - name: Configure CMake
+        run: >
+          cmake
+          -S .
+          -B build-asan-${{ matrix.cxx_standard }}
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
+          -DCLASSIFY_SCALAR_BUILD_TESTS=ON
+          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=${{ matrix.cxx_standard == 11 && 'OFF' || 'ON' }}
+          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=${{ matrix.cxx_standard }}
+
+      - name: Build
+        run: cmake --build build-asan-${{ matrix.cxx_standard }} --config RelWithDebInfo --parallel
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_init_order=1
+        run: ctest --test-dir build-asan-${{ matrix.cxx_standard }} --build-config RelWithDebInfo --output-on-failure

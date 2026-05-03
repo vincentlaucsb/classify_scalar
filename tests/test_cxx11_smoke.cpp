@@ -62,13 +62,19 @@ int main() {
         comma_numeric_policy_pack()) != classify_scalar::scalar_float) {
         return 8;
     }
+    double parsed = 0;
+    const char non_numeric[] = "stroustrup";
+    if (classify_scalar::parse_float(non_numeric, non_numeric + 9, parsed, ',') != false) {
+        return 9;
+    }
+
     std::uint8_t unsigned_hex = 0;
     const char hex_value[] = "FF";
     if (!classify_scalar::parse_hex(hex_value, hex_value + 2, unsigned_hex)) {
-        return 9;
+        return 10;
     }
     if (unsigned_hex != 255) {
-        return 10;
+        return 11;
     }
 
     return 0;

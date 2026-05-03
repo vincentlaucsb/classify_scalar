@@ -1633,6 +1633,17 @@ CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
     return true;
 }
 
+/// String-literal overload for parse_hex().
+template<bool TrimAsciiWhitespace = true, std::size_t Size, typename IntegerType>
+CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
+    std::is_integral<IntegerType>::value
+        && !std::is_same<IntegerType, bool>::value,
+    bool>::type parse_hex(
+    const char (&value)[Size],
+    IntegerType& out) noexcept {
+    return parse_hex<TrimAsciiWhitespace>(value, value + Size - 1, out);
+}
+
 /// Parse an explicit floating-point value with runtime '.' or ',' decimal selection.
 template<bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE bool parse_float(

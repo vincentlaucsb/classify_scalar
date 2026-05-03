@@ -63,7 +63,8 @@ int main() {
         return 8;
     }
     std::uint8_t unsigned_hex = 0;
-    if (!classify_scalar::parse_hex("FF", "FF" + 2, unsigned_hex)) {
+    const char hex_value[] = "FF";
+    if (!classify_scalar::parse_hex(hex_value, hex_value + 2, unsigned_hex)) {
         return 9;
     }
     if (unsigned_hex != 255) {

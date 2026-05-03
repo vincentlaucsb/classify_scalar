@@ -288,7 +288,8 @@ struct builtin_output_refs {
           timestamp(&timestamp_) {}
 
     template<ScalarKind Kind>
-    typename std::enable_if<detail::integer::is_signed_integer_kind(Kind), void>::type set(std::int64_t value) const noexcept {
+    typename std::enable_if<Kind >= scalar_int8 && Kind <= scalar_int64 && ((Kind - scalar_int8) % 2 == 0), void>::type
+    set(std::int64_t value) const noexcept {
         integer = value;
     }
 

@@ -34,11 +34,15 @@ bool parse_float_literal(const char (&value)[Size], double& out, const char deci
 
 TEST_CASE("explicit hex parsing accepts bare hexadecimal") {
     std::int64_t value = 0;
+    std::uint8_t unsigned_value = 0;
+    std::int8_t tiny_value = 0;
 
     CHECK(classify_scalar::classify_scalar("DEADBEEF") == classify_scalar::scalar_string);
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("DEADBEEF", value));
     CHECK(classify_scalar::parse_hex("DEADBEEF", value));
     CHECK(value == 0xDEADBEEFULL);
+    CHECK(classify_scalar::parse_hex("FF", unsigned_value));
+    CHECK(unsigned_value == 255);
 
     CHECK(parse_literal<classify_scalar::scalar_int64>("42", value));
     CHECK(value == 42);
@@ -48,6 +52,11 @@ TEST_CASE("explicit hex parsing accepts bare hexadecimal") {
 
     CHECK(classify_scalar::parse_hex("-FF", value));
     CHECK(value == -255);
+    CHECK(classify_scalar::parse_hex("-80", tiny_value));
+    CHECK(tiny_value == -128);
+    CHECK_FALSE(classify_scalar::parse_hex("80", tiny_value));
+    CHECK_FALSE(classify_scalar::parse_hex("-1", unsigned_value));
+    CHECK_FALSE(classify_scalar::parse_hex("100", unsigned_value));
 
     CHECK_FALSE(classify_scalar::parse_hex("0xgg", value));
 }

@@ -41,11 +41,21 @@ from csv-parser/csvzall scalar inference work.
   ASCII/dispatch tables, and C++20 diagnostics. Avoid compile-time bloat for
   convenience-only APIs, clever type plumbing, or overloads that users can
   trivially write themselves around the pointer-span core.
+- No German engineering: do not turn a small API request into a framework,
+  switchboard, policy annex, or second parser. Prefer the boring local change
+  that solves the stated problem.
 - Avoid tiny internal helper functions that are only called once, especially in
   the public header. A helper should usually earn its existence by being reused,
   isolating genuinely tricky behavior, improving testability, or keeping a
   hot-path function readable. If the helper body is shorter than its signature
   and has one caller, inline it unless there is a clear semantic reason not to.
+- The public header must be self-contained for compiler diagnostics. Fix public
+  header compile errors and warnings directly, or suppress deliberate
+  compatibility warnings with tightly scoped, prefixed macros/pragmas inside
+  `include/classify_scalar.hpp`.
+- Suppressing compiler warnings through target/compiler flags is only acceptable
+  for tests, benchmarks, or local harnesses. Do not make downstream users carry
+  warning suppressions for this header.
 
 ## Scalar Inference Contract
 

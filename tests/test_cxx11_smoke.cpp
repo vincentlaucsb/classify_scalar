@@ -62,6 +62,13 @@ int main() {
         comma_numeric_policy_pack()) != classify_scalar::scalar_float) {
         return 8;
     }
+    std::uint8_t unsigned_hex = 0;
+    if (!classify_scalar::parse_hex("FF", "FF" + 2, unsigned_hex)) {
+        return 9;
+    }
+    if (unsigned_hex != 255) {
+        return 10;
+    }
 
     return 0;
 }

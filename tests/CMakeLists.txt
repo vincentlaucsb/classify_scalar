@@ -1,6 +1,20 @@
 set(CLASSIFY_SCALAR_TEST_CXX_STANDARD 17 CACHE STRING "C++ standard for classify_scalar Catch2 tests")
 option(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS "Build Catch2 behavior tests" ON)
 
+function(classify_scalar_enable_test_warnings target_name)
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE
+            /W4
+            /permissive-
+            /EHsc)
+    else()
+        target_compile_options(${target_name} PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic)
+    endif()
+endfunction()
+
 if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
     find_package(Catch2 3 CONFIG QUIET)
 
@@ -37,11 +51,7 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
     set_property(TARGET classify_scalar_tests PROPERTY CXX_STANDARD_REQUIRED ON)
     set_property(TARGET classify_scalar_tests PROPERTY CXX_EXTENSIONS OFF)
 
-    if(MSVC)
-        target_compile_options(classify_scalar_tests PRIVATE /W4 /permissive-)
-    else()
-        target_compile_options(classify_scalar_tests PRIVATE -Wall -Wextra -Wpedantic)
-    endif()
+    classify_scalar_enable_test_warnings(classify_scalar_tests)
 
     add_test(NAME classify_scalar_tests COMMAND classify_scalar_tests)
 endif()
@@ -57,11 +67,7 @@ set_property(TARGET classify_scalar_cxx11_smoke PROPERTY CXX_STANDARD 11)
 set_property(TARGET classify_scalar_cxx11_smoke PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET classify_scalar_cxx11_smoke PROPERTY CXX_EXTENSIONS OFF)
 
-if(MSVC)
-    target_compile_options(classify_scalar_cxx11_smoke PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(classify_scalar_cxx11_smoke PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+classify_scalar_enable_test_warnings(classify_scalar_cxx11_smoke)
 
 add_test(NAME classify_scalar_cxx11_smoke COMMAND classify_scalar_cxx11_smoke)
 
@@ -76,10 +82,6 @@ set_property(TARGET classify_scalar_cxx20_concepts PROPERTY CXX_STANDARD 20)
 set_property(TARGET classify_scalar_cxx20_concepts PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET classify_scalar_cxx20_concepts PROPERTY CXX_EXTENSIONS OFF)
 
-if(MSVC)
-    target_compile_options(classify_scalar_cxx20_concepts PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(classify_scalar_cxx20_concepts PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+classify_scalar_enable_test_warnings(classify_scalar_cxx20_concepts)
 
 add_test(NAME classify_scalar_cxx20_concepts COMMAND classify_scalar_cxx20_concepts)

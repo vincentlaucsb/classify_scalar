@@ -1184,6 +1184,8 @@ CLASSIFY_SCALAR_FORCE_INLINE bool floating_is_integral(const double value, std::
         return false;
 
     const std::int64_t integer = static_cast<std::int64_t>(value);
+    // Exact round-trip test: we need to know whether the parsed double is
+    // precisely representable as int64, not whether two measured floats are close.
     if (static_cast<double>(integer) != value)
         return false;
 

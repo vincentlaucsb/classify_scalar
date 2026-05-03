@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        cxx_standard: [11, 17, 20]
+        cxx_standard: [11, 14, 17, 20]
 
     steps:
       - name: Checkout

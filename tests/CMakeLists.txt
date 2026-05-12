@@ -1,5 +1,6 @@
 set(CLASSIFY_SCALAR_TEST_CXX_STANDARD 17 CACHE STRING "C++ standard for classify_scalar Catch2 tests")
 option(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS "Build Catch2 behavior tests" ON)
+option(CLASSIFY_SCALAR_ENABLE_COVERAGE "Build classify_scalar tests with coverage instrumentation" OFF)
 
 function(classify_scalar_enable_test_warnings target_name)
     if(MSVC)
@@ -12,6 +13,13 @@ function(classify_scalar_enable_test_warnings target_name)
             -Wall
             -Wextra
             -Wpedantic)
+    endif()
+endfunction()
+
+function(classify_scalar_enable_test_coverage target_name)
+    if(CLASSIFY_SCALAR_ENABLE_COVERAGE AND NOT MSVC)
+        target_compile_options(${target_name} PRIVATE --coverage)
+        target_link_options(${target_name} PRIVATE --coverage)
     endif()
 endfunction()
 
@@ -52,6 +60,7 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
     set_property(TARGET classify_scalar_tests PROPERTY CXX_EXTENSIONS OFF)
 
     classify_scalar_enable_test_warnings(classify_scalar_tests)
+    classify_scalar_enable_test_coverage(classify_scalar_tests)
 
     add_test(NAME classify_scalar_tests COMMAND classify_scalar_tests)
 
@@ -68,6 +77,7 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
     set_property(TARGET classify_scalar_float_fallback_tests PROPERTY CXX_EXTENSIONS OFF)
 
     classify_scalar_enable_test_warnings(classify_scalar_float_fallback_tests)
+    classify_scalar_enable_test_coverage(classify_scalar_float_fallback_tests)
 
     add_test(NAME classify_scalar_float_fallback_tests COMMAND classify_scalar_float_fallback_tests)
 endif()
@@ -84,6 +94,7 @@ set_property(TARGET classify_scalar_cxx11_smoke PROPERTY CXX_STANDARD_REQUIRED O
 set_property(TARGET classify_scalar_cxx11_smoke PROPERTY CXX_EXTENSIONS OFF)
 
 classify_scalar_enable_test_warnings(classify_scalar_cxx11_smoke)
+classify_scalar_enable_test_coverage(classify_scalar_cxx11_smoke)
 
 add_test(NAME classify_scalar_cxx11_smoke COMMAND classify_scalar_cxx11_smoke)
 
@@ -99,5 +110,6 @@ set_property(TARGET classify_scalar_cxx20_concepts PROPERTY CXX_STANDARD_REQUIRE
 set_property(TARGET classify_scalar_cxx20_concepts PROPERTY CXX_EXTENSIONS OFF)
 
 classify_scalar_enable_test_warnings(classify_scalar_cxx20_concepts)
+classify_scalar_enable_test_coverage(classify_scalar_cxx20_concepts)
 
 add_test(NAME classify_scalar_cxx20_concepts COMMAND classify_scalar_cxx20_concepts)

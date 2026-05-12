@@ -162,9 +162,9 @@ enum ScalarKind : int {
     scalar_uint64 = 10,
     /// Well-formed decimal integer outside the int64 range.
     scalar_bigint = 11,
-    /// Floating-point literal parsed as double.
+    /// Floating-point literal parsed as finite double.
     scalar_float = 12,
-	/// High precision floating-point literal (reserved for future use, not currently returned by classify_scalar).
+    /// Well-formed floating-point literal outside the built-in finite double conversion envelope.
     scalar_bigfloat = 13,
     /// Conservative ISO date/date-time value, stored as UTC unix milliseconds when parsed.
     scalar_timestamp = 14,

@@ -125,10 +125,11 @@ jobs:
               -S . \
               -B "build-codecov-${standard}" \
               -DCMAKE_BUILD_TYPE=Debug \
-              -DCMAKE_CXX_FLAGS="--coverage -O0 -g" \
+              -DCMAKE_CXX_FLAGS="-O0 -g" \
               -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
               -DCLASSIFY_SCALAR_BUILD_TESTS=ON \
               -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=ON \
+              -DCLASSIFY_SCALAR_ENABLE_COVERAGE=ON \
               -DCLASSIFY_SCALAR_TEST_CXX_STANDARD="${standard}"
           done
 
@@ -146,13 +147,15 @@ jobs:
         run: |
           lcov \
             --capture \
-            --directory build-codecov-11 \
+            --directory build-codecov-11/tests \
             --rc geninfo_unexecuted_blocks=1 \
+            --ignore-errors source \
             --output-file coverage-11.info
           lcov \
             --capture \
-            --directory build-codecov-20 \
+            --directory build-codecov-20/tests \
             --rc geninfo_unexecuted_blocks=1 \
+            --ignore-errors source \
             --output-file coverage-20.info
           lcov \
             --add-tracefile coverage-11.info \

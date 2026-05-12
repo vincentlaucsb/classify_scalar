@@ -1,8 +1,10 @@
 # classify_scalar
+[![CMake on multiple platforms](https://github.com/vincentlaucsb/classify_scalar/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/vincentlaucsb/classify_scalar/actions/workflows/cmake-multi-platform.yml)
+[![codecov](https://codecov.io/gh/vincentlaucsb/classify_scalar/graph/badge.svg?token=63NC8PVLYC)](https://codecov.io/gh/vincentlaucsb/classify_scalar)
 
 ![classify_scalar logo](assets/classify_scalar_logo.png)
 
-High-performance, header-only scalar classification for C++11 and newer.
+High-performance, header-only scalar classification for C++11 and newer based on the leading byte of a string.
 
 ## Motivation
 I was creating a general purpose ETL tool for CSV files and needed a fast and reliable way to determine whether a field was a number, bool, basic string, an ISO 8601 timestamp, etc.

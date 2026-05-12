@@ -78,6 +78,9 @@ TEST_CASE("classifies exponential notation") {
 
     CHECK(classify_scalar::classify_scalar("1e-3", classify_scalar::output_refs(number, integer, boolean)) == scalar_float);
     CHECK(static_cast<double>(number) == Catch::Approx(0.001));
+
+    CHECK(classify_scalar::classify_scalar("1e3") == scalar_int16);
+    CHECK(classify_scalar::classify_scalar("1e20") == scalar_float);
 }
 
 TEST_CASE("malformed exponential notation falls back to string") {

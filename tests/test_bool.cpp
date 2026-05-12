@@ -26,3 +26,8 @@ TEST_CASE("boolean recognition can be disabled at compile time") {
 
     CHECK(classify_scalar::classify_scalar("true", classify_scalar::classify_only_output(), no_bool_pack()) == scalar_string);
 }
+
+TEST_CASE("malformed boolean prefixes fall back to string") {
+    CHECK(classify_scalar::classify_scalar("trux") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("falsx") == scalar_string);
+}

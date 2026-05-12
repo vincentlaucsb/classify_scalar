@@ -93,3 +93,68 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=1:strict_init_order=1
         run: ctest --test-dir build-asan-${{ matrix.cxx_standard }} --build-config RelWithDebInfo --output-on-failure
+
+  codecov:
+    name: Codecov / Ubuntu / C++20
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lcov
+
+      - name: Cache CMake dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/build-codecov/_deps
+          key: cmake-deps-codecov-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-deps-codecov-${{ runner.os }}-
+            cmake-deps-${{ runner.os }}-
+
+      - name: Configure CMake
+        run: >
+          cmake
+          -S .
+          -B build-codecov
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-O0 -g"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+          -DCLASSIFY_SCALAR_BUILD_TESTS=ON
+          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=ON
+          -DCLASSIFY_SCALAR_ENABLE_COVERAGE=ON
+          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=20
+
+      - name: Build
+        run: cmake --build build-codecov --config Debug --parallel
+
+      - name: Test
+        run: ctest --test-dir build-codecov --build-config Debug --output-on-failure
+
+      - name: Generate lcov report
+        run: |
+          lcov \
+            --capture \
+            --directory build-codecov/tests \
+            --rc geninfo_unexecuted_blocks=1 \
+            --ignore-errors source \
+            --output-file coverage.raw.info
+          lcov \
+            --extract coverage.raw.info \
+            '*/include/classify_scalar.hpp' \
+            --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          disable_search: true
+          fail_ci_if_error: true
+          files: coverage.info
+          flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}

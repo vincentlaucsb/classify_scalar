@@ -194,8 +194,9 @@ User policy packs are ordered by priority: the first policy whose
 the pack falls through to the next policy that matches the same leading byte.
 
 Integer conversion uses the bundled parser in all language modes. When compiled
-as C++17 or newer, floating-point conversion uses `std::from_chars`; older
-builds use the bundled fallback parser.
+as C++17 or newer, floating-point conversion uses `std::from_chars` when the
+standard library provides floating-point overloads; older builds and libc++
+builds without those overloads use the bundled fallback parser.
 
 Decimal and `0x` integer literals classify to the narrowest signed width
 (`scalar_int8`, `scalar_int16`, `scalar_int32`, or `scalar_int64`). Decimal
@@ -204,6 +205,11 @@ storing the full integer text. Unsigned scalar ids are reserved for a future
 unsigned policy, but the default classifier currently reports signed kinds.
 Hexadecimal inference is limited to `0x`/`0X` prefixes by default; bare hex
 strings such as `FF` remain strings.
+
+Well-formed floating-point literals that cannot be represented by the built-in
+finite `double` conversion path classify as `scalar_bigfloat`. That includes
+range errors such as overflow or underflow; callers that need those exact values
+should route the original span to an arbitrary-precision floating-point parser.
 
 ## Policy Packs
 
@@ -290,8 +296,9 @@ overloads.
  * C++20 builds add concepts to improve diagnostics for malformed
 custom policy packs.
 
-C++17 and newer builds use `std::from_chars` for floating point parsing. C++11
-and C++14 builds use the bundled fallback parser.
+C++17 and newer builds use `std::from_chars` for floating point parsing when the
+standard library provides those overloads. C++11, C++14, and standard libraries
+without floating `from_chars` use the bundled fallback parser.
 
 The header defines `CLASSIFY_SCALAR_VERSION_MAJOR`,
 `CLASSIFY_SCALAR_VERSION_MINOR`, `CLASSIFY_SCALAR_VERSION_PATCH`, and numeric

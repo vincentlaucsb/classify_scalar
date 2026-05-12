@@ -83,6 +83,8 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("9223372036854775808", integer));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("3.14", integer));
     CHECK_FALSE(classify_scalar::parse_scalar<std::int64_t>("3.14", integer));
+    CHECK(classify_scalar::parse_scalar<classify_scalar::scalar_int64>("42", integer));
+    CHECK(integer == 42);
     CHECK(parse_literal<classify_scalar::scalar_float>("42", floating));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_float>("hello", floating));
 

@@ -1794,6 +1794,14 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
     return true;
 }
 
+/// String-literal overload for built-in scalar parse_scalar().
+template<ScalarKind Kind, bool TrimAsciiWhitespace = true, std::size_t Size>
+CLASSIFY_SCALAR_FORCE_INLINE bool parse_scalar(
+    const char (&value)[Size],
+    typename detail::scalar_home<Kind>::type& out) noexcept {
+    return parse_scalar<Kind, TrimAsciiWhitespace>(value, value + Size - 1, out);
+}
+
 /// Parse a signed integer directly into the requested C++ integer type.
 template<typename IntegerType, bool TrimAsciiWhitespace = true>
 CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
@@ -1822,6 +1830,18 @@ CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
 
     out = static_cast<IntegerType>(integer);
     return true;
+}
+
+/// String-literal overload for signed integer parse_scalar<T>().
+template<typename IntegerType, bool TrimAsciiWhitespace = true, std::size_t Size>
+CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
+    std::is_integral<IntegerType>::value
+        && std::is_signed<IntegerType>::value
+        && !std::is_same<IntegerType, bool>::value,
+    bool>::type parse_scalar(
+    const char (&value)[Size],
+    IntegerType& out) noexcept {
+    return parse_scalar<IntegerType, TrimAsciiWhitespace>(value, value + Size - 1, out);
 }
 
 #ifdef CLASSIFY_SCALAR_HAS_CXX17

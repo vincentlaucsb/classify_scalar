@@ -95,58 +95,75 @@ jobs:
         run: ctest --test-dir build-asan-${{ matrix.cxx_standard }} --build-config RelWithDebInfo --output-on-failure
 
   codecov:
-    name: Codecov / Ubuntu / C++${{ matrix.cxx_standard }}
+    name: Codecov / Ubuntu / C++11 + C++20
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        cxx_standard: [11, 20]
-        include:
-          - cxx_standard: 11
-            build_catch2_tests: OFF
-          - cxx_standard: 20
-            build_catch2_tests: ON
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install coverage tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lcov
+
       - name: Cache CMake dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}/build-codecov-${{ matrix.cxx_standard }}/_deps
-          key: cmake-deps-codecov-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+            ${{ github.workspace }}/build-codecov-11/_deps
+            ${{ github.workspace }}/build-codecov-20/_deps
+          key: cmake-deps-codecov-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
           restore-keys: |
-            cmake-deps-codecov-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
-            cmake-deps-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
+            cmake-deps-codecov-${{ runner.os }}-
             cmake-deps-${{ runner.os }}-
 
-      - name: Configure CMake
-        run: >
-          cmake
-          -S .
-          -B build-codecov-${{ matrix.cxx_standard }}
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
-          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
-          -DCLASSIFY_SCALAR_BUILD_TESTS=ON
-          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=${{ matrix.build_catch2_tests }}
-          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=${{ matrix.cxx_standard }}
+      - name: Configure CMake coverage builds
+        run: |
+          for standard in 11 20; do
+            cmake \
+              -S . \
+              -B "build-codecov-${standard}" \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_CXX_FLAGS="--coverage -O0 -g" \
+              -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+              -DCLASSIFY_SCALAR_BUILD_TESTS=ON \
+              -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=ON \
+              -DCLASSIFY_SCALAR_TEST_CXX_STANDARD="${standard}"
+          done
 
-      - name: Build
-        run: cmake --build build-codecov-${{ matrix.cxx_standard }} --config Debug --parallel
+      - name: Build coverage targets
+        run: |
+          cmake --build build-codecov-11 --config Debug --parallel
+          cmake --build build-codecov-20 --config Debug --parallel
 
-      - name: Test
-        run: ctest --test-dir build-codecov-${{ matrix.cxx_standard }} --build-config Debug --output-on-failure
+      - name: Test coverage targets
+        run: |
+          ctest --test-dir build-codecov-11 --build-config Debug --output-on-failure
+          ctest --test-dir build-codecov-20 --build-config Debug --output-on-failure
+
+      - name: Generate combined lcov report
+        run: |
+          lcov --capture --directory build-codecov-11 --output-file coverage-11.info
+          lcov --capture --directory build-codecov-20 --output-file coverage-20.info
+          lcov \
+            --add-tracefile coverage-11.info \
+            --add-tracefile coverage-20.info \
+            --output-file coverage-combined.raw.info
+          lcov \
+            --remove coverage-combined.raw.info \
+            '*/tests/*' \
+            '*/build-codecov-*/*' \
+            '*/_deps/*' \
+            '/usr/*' \
+            --output-file coverage.info
+          lcov --list coverage.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          disable_search: true
           fail_ci_if_error: true
-          flags: unittests,cxx${{ matrix.cxx_standard }}
-          gcov_include: include/
-          gcov_ignore: tests/*
-          plugins: gcov
+          files: coverage.info
+          flags: unittests
           token: ${{ secrets.CODECOV_TOKEN }}

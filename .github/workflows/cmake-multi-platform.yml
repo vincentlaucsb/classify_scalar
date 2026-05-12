@@ -144,18 +144,23 @@ jobs:
 
       - name: Generate combined lcov report
         run: |
-          lcov --capture --directory build-codecov-11 --output-file coverage-11.info
-          lcov --capture --directory build-codecov-20 --output-file coverage-20.info
+          lcov \
+            --capture \
+            --directory build-codecov-11 \
+            --rc geninfo_unexecuted_blocks=1 \
+            --output-file coverage-11.info
+          lcov \
+            --capture \
+            --directory build-codecov-20 \
+            --rc geninfo_unexecuted_blocks=1 \
+            --output-file coverage-20.info
           lcov \
             --add-tracefile coverage-11.info \
             --add-tracefile coverage-20.info \
             --output-file coverage-combined.raw.info
           lcov \
-            --remove coverage-combined.raw.info \
-            '*/tests/*' \
-            '*/build-codecov-*/*' \
-            '*/_deps/*' \
-            '/usr/*' \
+            --extract coverage-combined.raw.info \
+            '*/include/classify_scalar.hpp' \
             --output-file coverage.info
           lcov --list coverage.info
 

@@ -41,6 +41,7 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
         test_classify_scalar.cpp
         test_decimal_int.cpp
         test_float.cpp
+        test_float_helpers.cpp
         test_hex.cpp
         test_macro_hygiene.cpp
         test_null_string_trim.cpp

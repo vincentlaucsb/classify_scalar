@@ -4,9 +4,7 @@
 #include <classify_scalar.hpp>
 
 #include <cstdint>
-#include <string>
 
-using classify_scalar::scalar_bigfloat;
 using classify_scalar::scalar_float;
 using classify_scalar::scalar_int8;
 using classify_scalar::scalar_int16;
@@ -59,16 +57,6 @@ TEST_CASE("classifies floats with a custom decimal symbol") {
         "3.14",
         classify_scalar::classify_only_output(),
         comma_decimal_pack()) == scalar_string);
-
-    CHECK(classify_scalar::classify_scalar(
-        "1,2 e3",
-        classify_scalar::classify_only_output(),
-        comma_decimal_pack()) == scalar_string);
-
-    CHECK(classify_scalar::classify_scalar(
-        "1,2abc",
-        classify_scalar::classify_only_output(),
-        comma_decimal_pack()) == scalar_string);
 }
 
 TEST_CASE("malformed decimal floats fall back to string") {
@@ -93,30 +81,6 @@ TEST_CASE("classifies exponential notation") {
 
     CHECK(classify_scalar::classify_scalar("1e3") == scalar_int16);
     CHECK(classify_scalar::classify_scalar("1e20") == scalar_float);
-}
-
-TEST_CASE("classifies huge floating syntax as bigfloat") {
-    typedef classify_scalar::policy_pack<
-        classify_scalar::builtin_numeric_policy<','>,
-        classify_scalar::builtin_bool_policy> comma_decimal_pack;
-
-    std::string oversized_dot = "1.";
-    oversized_dot.append(4096, '0');
-    CHECK(classify_scalar::classify_scalar(oversized_dot.c_str(), oversized_dot.c_str() + oversized_dot.size()) == scalar_bigfloat);
-
-    std::string oversized_comma = "1,";
-    oversized_comma.append(4096, '0');
-    CHECK(classify_scalar::classify_scalar(
-        oversized_comma.c_str(),
-        oversized_comma.c_str() + oversized_comma.size(),
-        classify_scalar::classify_only_output(),
-        comma_decimal_pack()) == scalar_bigfloat);
-
-    CHECK(classify_scalar::classify_scalar("1e309") == scalar_bigfloat);
-    CHECK(classify_scalar::classify_scalar(
-        "1e309",
-        classify_scalar::classify_only_output(),
-        comma_decimal_pack()) == scalar_bigfloat);
 }
 
 TEST_CASE("malformed exponential notation falls back to string") {

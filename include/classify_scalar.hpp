@@ -1454,7 +1454,7 @@ struct builtin_numeric_policy {
         parse_state& state,
         const char* value_first,
         Output& output) const noexcept {
-		// Use overflow checks for numbers with 19 or more digits, which can exceed 64-bit limits.
+        // Use overflow checks for numbers with 19 or more digits, which can exceed 64-bit limits.
         // Shorter numbers are common enough that it's worth skipping the checks for them.
         // Testing note: yes this was a significant optimization.
         return state.last - value_first < 19
@@ -1721,6 +1721,9 @@ CLASSIFY_SCALAR_FORCE_INLINE typename std::enable_if<
 
     std::int64_t parsed = 0;
     if (current + 2 <= state.last && current[0] == '0' && (current[1] == 'x' || current[1] == 'X')) {
+        if (current + 2 == state.last)
+            return false;
+
         state.current = current + 1;
         if (!detail::parsing::parse_hex_integer(state, &parsed))
             return false;

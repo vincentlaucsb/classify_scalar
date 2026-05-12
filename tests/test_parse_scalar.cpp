@@ -58,7 +58,11 @@ TEST_CASE("explicit hex parsing accepts bare hexadecimal") {
     CHECK_FALSE(classify_scalar::parse_hex("-1", unsigned_value));
     CHECK_FALSE(classify_scalar::parse_hex("100", unsigned_value));
 
+    CHECK_FALSE(classify_scalar::parse_hex("", value));
+    CHECK_FALSE(classify_scalar::parse_hex("+", value));
+    CHECK_FALSE(classify_scalar::parse_hex("0x", value));
     CHECK_FALSE(classify_scalar::parse_hex("0xgg", value));
+    CHECK_FALSE(classify_scalar::parse_hex("gg", value));
 }
 
 TEST_CASE("explicit scalar parsers bypass classifier policy order") {
@@ -78,6 +82,7 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     CHECK(integer == -42);
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("9223372036854775808", integer));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("3.14", integer));
+    CHECK_FALSE(classify_scalar::parse_scalar<std::int64_t>("3.14", integer));
     CHECK(parse_literal<classify_scalar::scalar_float>("42", floating));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_float>("hello", floating));
 
@@ -131,5 +136,6 @@ TEST_CASE("explicit float parser accepts runtime decimal symbols") {
     CHECK_FALSE(parse_float_literal("3,14", floating, '.'));
     CHECK_FALSE(parse_float_literal("3.14", floating, ','));
     CHECK_FALSE(parse_float_literal("3;14", floating, ';'));
+    CHECK_FALSE(parse_float_literal("+", floating));
     CHECK_FALSE(classify_scalar::parse_float(static_cast<const char*>(nullptr), static_cast<const char*>(nullptr), floating));
 }

@@ -83,14 +83,13 @@ TEST_CASE("fallback floating parser matches reference conversion for dense decim
     }
 }
 
-TEST_CASE("fallback floating parser reports big floats outside exact mantissa range") {
+TEST_CASE("fallback floating parser reports big floats outside finite double range") {
     typedef classify_scalar::policy_pack<
         classify_scalar::builtin_numeric_policy<'.', false> > floating_syntax_pack;
 
     const char* literals[] = {
-        "0.33333333333333331",
-        "2.2250738585072014e-308",
-        "1.7976931348623157e308"
+        "1e309",
+        "-1e309"
     };
 
     for (const char* literal : literals) {

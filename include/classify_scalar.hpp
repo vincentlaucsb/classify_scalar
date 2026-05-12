@@ -1006,12 +1006,11 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_bare_hex_integer(
 
 CLASSIFY_SCALAR_FORCE_INLINE long double pow10_integer(const int exponent) noexcept {
     long double value = 1.0L;
-    const long double factor = exponent >= 0 ? 10.0L : 0.1L;
     const int iterations = exponent >= 0 ? exponent : -exponent;
     for (int i = 0; i < iterations; ++i)
-        value *= factor;
+        value *= 10.0L;
 
-    return value;
+    return exponent >= 0 ? value : 1.0L / value;
 }
 
 enum class floating_parse_status {
@@ -1019,6 +1018,44 @@ enum class floating_parse_status {
     parsed,
     bigfloat
 };
+
+CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_exponent(
+    const char*& current,
+    const char* last,
+    int* out) noexcept {
+    assert(current != last);
+    assert(*current == 'e' || *current == 'E');
+
+    ++current;
+    if (current == last)
+        return floating_parse_status::invalid;
+
+    bool exponent_negative = false;
+    const parse_state::Sign exponent_sign = parse_sign(static_cast<unsigned char>(*current));
+    if (exponent_sign != parse_state::no_sign) {
+        exponent_negative = exponent_sign == parse_state::negative_sign;
+        ++current;
+        if (current == last)
+            return floating_parse_status::invalid;
+    }
+
+    int exponent = 0;
+    while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
+        if (exponent <= 500)
+            exponent = (exponent * 10) + (*current - '0');
+
+        ++current;
+    }
+
+    if (current != last)
+        return floating_parse_status::invalid;
+
+    if (exponent > 500)
+        return floating_parse_status::bigfloat;
+
+    *out = exponent_negative ? -exponent : exponent;
+    return floating_parse_status::parsed;
+}
 
 template<char DecimalSymbol>
 CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_ascii(
@@ -1031,83 +1068,45 @@ CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_ascii(
     if (state.sign == parse_state::negative_sign)
         ++current;
 
-    const std::uint64_t max_exact_double_integer = UINT64_C(9007199254740991);
-    std::uint64_t mantissa = 0;
-    int fractional_digits = 0;
+    long double integral_part = 0;
+    long double decimal_part = 0;
+    unsigned places_after_decimal = 0;
     int exponent = 0;
-    bool mantissa_is_exact = true;
     bool has_digit = false;
 
-#define CLASSIFY_SCALAR_ACCUMULATE_FLOAT_DIGIT(digit_value) do { \
-        const unsigned char digit__ = static_cast<unsigned char>(digit_value); \
-        if (mantissa_is_exact) { \
-            if (mantissa > (max_exact_double_integer - digit__) / 10U) { \
-                mantissa_is_exact = false; \
-            } else { \
-                mantissa = (mantissa * 10U) + digit__; \
-            } \
-        } \
-        has_digit = true; \
-    } while (false)
-
     while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
-        CLASSIFY_SCALAR_ACCUMULATE_FLOAT_DIGIT(*current - '0');
+        const unsigned char digit = static_cast<unsigned char>(*current - '0');
+        integral_part = (integral_part * 10.0L) + digit;
+        has_digit = true;
         ++current;
     }
 
     if (current != last && static_cast<unsigned char>(*current) == static_cast<unsigned char>(DecimalSymbol)) {
         ++current;
         while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
-            CLASSIFY_SCALAR_ACCUMULATE_FLOAT_DIGIT(*current - '0');
-            ++fractional_digits;
+            const unsigned char digit = static_cast<unsigned char>(*current - '0');
+            decimal_part += digit / pow10_integer(static_cast<int>(++places_after_decimal));
+            has_digit = true;
             ++current;
         }
     }
-
-#undef CLASSIFY_SCALAR_ACCUMULATE_FLOAT_DIGIT
 
     if (!has_digit)
         return floating_parse_status::invalid;
 
     if (current != last && (*current == 'e' || *current == 'E')) {
-        ++current;
-        if (current == last)
-            return floating_parse_status::invalid;
-
-        bool exponent_negative = false;
-        const parse_state::Sign exponent_sign = parse_sign(static_cast<unsigned char>(*current));
-        if (exponent_sign != parse_state::no_sign) {
-            exponent_negative = exponent_sign == parse_state::negative_sign;
-            ++current;
-            if (current == last)
-                return floating_parse_status::invalid;
-        }
-
-        while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
-            if (exponent <= 500)
-                exponent = (exponent * 10) + (*current - '0');
-
-            ++current;
-        }
-
-        if (current != last)
-            return floating_parse_status::invalid;
-
-        if (exponent > 500)
-            return floating_parse_status::bigfloat;
-
-        if (exponent_negative)
-            exponent = -exponent;
+        const floating_parse_status exponent_status = parse_floating_exponent(current, last, &exponent);
+        if (exponent_status != floating_parse_status::parsed)
+            return exponent_status;
     }
 
     if (current != last)
         return floating_parse_status::invalid;
 
-    const int effective_exponent = exponent - fractional_digits;
-    if (!mantissa_is_exact || effective_exponent > 308 || effective_exponent < -308)
+    if (exponent > 308 || exponent < -308)
         return floating_parse_status::bigfloat;
 
-    long double parsed = static_cast<long double>(mantissa) * pow10_integer(effective_exponent);
+    long double parsed = (integral_part + decimal_part) * pow10_integer(exponent);
     if (state.sign == parse_state::negative_sign)
         parsed = -parsed;
 

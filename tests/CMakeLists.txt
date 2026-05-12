@@ -54,6 +54,22 @@ if(CLASSIFY_SCALAR_BUILD_CATCH2_TESTS)
     classify_scalar_enable_test_warnings(classify_scalar_tests)
 
     add_test(NAME classify_scalar_tests COMMAND classify_scalar_tests)
+
+    add_executable(classify_scalar_float_fallback_tests
+        test_float_fallback.cpp)
+
+    target_link_libraries(classify_scalar_float_fallback_tests
+        PRIVATE
+            classify_scalar::classify_scalar
+            Catch2::Catch2WithMain)
+
+    set_property(TARGET classify_scalar_float_fallback_tests PROPERTY CXX_STANDARD ${CLASSIFY_SCALAR_TEST_CXX_STANDARD})
+    set_property(TARGET classify_scalar_float_fallback_tests PROPERTY CXX_STANDARD_REQUIRED ON)
+    set_property(TARGET classify_scalar_float_fallback_tests PROPERTY CXX_EXTENSIONS OFF)
+
+    classify_scalar_enable_test_warnings(classify_scalar_float_fallback_tests)
+
+    add_test(NAME classify_scalar_float_fallback_tests COMMAND classify_scalar_float_fallback_tests)
 endif()
 
 add_executable(classify_scalar_cxx11_smoke

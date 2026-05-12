@@ -53,6 +53,9 @@ from csv-parser/csvzall scalar inference work.
   header compile errors and warnings directly, or suppress deliberate
   compatibility warnings with tightly scoped, prefixed macros/pragmas inside
   `include/classify_scalar.hpp`.
+- When touching release metadata, or when you notice it during nearby work,
+  opportunistically flag mismatches between the header banner, version macros,
+  CMake project version, README/docs, and version tests.
 - Suppressing compiler warnings through target/compiler flags is only acceptable
   for tests, benchmarks, or local harnesses. Do not make downstream users carry
   warning suppressions for this header.

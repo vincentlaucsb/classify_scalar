@@ -28,16 +28,16 @@ SOFTWARE.
 #pragma once
 
 #if defined(CLASSIFY_SCALAR_VERSION)
-#if CLASSIFY_SCALAR_VERSION >= 10000
+#if CLASSIFY_SCALAR_VERSION >= 10100
 #define CLASSIFY_SCALAR_SKIP_HEADER
 #else
 #error "A newer classify_scalar.hpp was included after an older copy. Include the newest copy first."
 #endif
 #else
 #define CLASSIFY_SCALAR_VERSION_MAJOR 1
-#define CLASSIFY_SCALAR_VERSION_MINOR 0
+#define CLASSIFY_SCALAR_VERSION_MINOR 1
 #define CLASSIFY_SCALAR_VERSION_PATCH 0
-#define CLASSIFY_SCALAR_VERSION 10000
+#define CLASSIFY_SCALAR_VERSION 10100
 #endif
 
 #ifndef CLASSIFY_SCALAR_SKIP_HEADER

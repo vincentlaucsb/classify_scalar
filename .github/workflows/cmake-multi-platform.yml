@@ -95,7 +95,7 @@ jobs:
         run: ctest --test-dir build-asan-${{ matrix.cxx_standard }} --build-config RelWithDebInfo --output-on-failure
 
   codecov:
-    name: Codecov / Ubuntu / C++11 + C++20
+    name: Codecov / Ubuntu / C++20
     runs-on: ubuntu-latest
 
     steps:
@@ -111,58 +111,41 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}/build-codecov-11/_deps
-            ${{ github.workspace }}/build-codecov-20/_deps
+            ${{ github.workspace }}/build-codecov/_deps
           key: cmake-deps-codecov-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
           restore-keys: |
             cmake-deps-codecov-${{ runner.os }}-
             cmake-deps-${{ runner.os }}-
 
-      - name: Configure CMake coverage builds
-        run: |
-          for standard in 11 20; do
-            cmake \
-              -S . \
-              -B "build-codecov-${standard}" \
-              -DCMAKE_BUILD_TYPE=Debug \
-              -DCMAKE_CXX_FLAGS="-O0 -g" \
-              -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
-              -DCLASSIFY_SCALAR_BUILD_TESTS=ON \
-              -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=ON \
-              -DCLASSIFY_SCALAR_ENABLE_COVERAGE=ON \
-              -DCLASSIFY_SCALAR_TEST_CXX_STANDARD="${standard}"
-          done
+      - name: Configure CMake
+        run: >
+          cmake
+          -S .
+          -B build-codecov
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-O0 -g"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+          -DCLASSIFY_SCALAR_BUILD_TESTS=ON
+          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=ON
+          -DCLASSIFY_SCALAR_ENABLE_COVERAGE=ON
+          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=20
 
-      - name: Build coverage targets
-        run: |
-          cmake --build build-codecov-11 --config Debug --parallel
-          cmake --build build-codecov-20 --config Debug --parallel
+      - name: Build
+        run: cmake --build build-codecov --config Debug --parallel
 
-      - name: Test coverage targets
-        run: |
-          ctest --test-dir build-codecov-11 --build-config Debug --output-on-failure
-          ctest --test-dir build-codecov-20 --build-config Debug --output-on-failure
+      - name: Test
+        run: ctest --test-dir build-codecov --build-config Debug --output-on-failure
 
-      - name: Generate combined lcov report
+      - name: Generate lcov report
         run: |
           lcov \
             --capture \
-            --directory build-codecov-11/tests \
+            --directory build-codecov/tests \
             --rc geninfo_unexecuted_blocks=1 \
             --ignore-errors source \
-            --output-file coverage-11.info
+            --output-file coverage.raw.info
           lcov \
-            --capture \
-            --directory build-codecov-20/tests \
-            --rc geninfo_unexecuted_blocks=1 \
-            --ignore-errors source \
-            --output-file coverage-20.info
-          lcov \
-            --add-tracefile coverage-11.info \
-            --add-tracefile coverage-20.info \
-            --output-file coverage-combined.raw.info
-          lcov \
-            --extract coverage-combined.raw.info \
+            --extract coverage.raw.info \
             '*/include/classify_scalar.hpp' \
             --output-file coverage.info
           lcov --list coverage.info

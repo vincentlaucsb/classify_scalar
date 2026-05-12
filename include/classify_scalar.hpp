@@ -1004,12 +1004,59 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_bare_hex_integer(
     return parse_integer_digits(state, current, last, 16U, out) == integer_parse_valid;
 }
 
-CLASSIFY_SCALAR_FORCE_INLINE long double pow10_integer(const int exponent) noexcept {
-    long double value = 1.0L;
-    const int iterations = exponent >= 0 ? exponent : -exponent;
-    for (int i = 0; i < iterations; ++i)
+template<typename Output>
+CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_integer(
+    const std::int64_t parsed_integer,
+    Output& output) noexcept {
+    output.template set<scalar_int64>(parsed_integer);
+    return integer::classify_integer_kind(parsed_integer);
+}
+
+} // namespace parsing
+
+namespace floating {
+
+enum { powers_of_10_count = 19 };
+
+// 10^0..10^18 are exact on common x86 extended long double and cover the
+// precision envelope where the C++11 fallback parser tries to match legacy
+// csv-parser data_type() / from_chars-style double results.
+CLASSIFY_SCALAR_CONSTEXPR_VALUE_14 std::array<long double, powers_of_10_count> POWERS_OF_10 = {{
+    1.0L,
+    10.0L,
+    100.0L,
+    1000.0L,
+    10000.0L,
+    100000.0L,
+    1000000.0L,
+    10000000.0L,
+    100000000.0L,
+    1000000000.0L,
+    10000000000.0L,
+    100000000000.0L,
+    1000000000000.0L,
+    10000000000000.0L,
+    100000000000000.0L,
+    1000000000000000.0L,
+    10000000000000000.0L,
+    100000000000000000.0L,
+    1000000000000000000.0L,
+}};
+
+CLASSIFY_SCALAR_FORCE_INLINE long double pow10_positive_integer(const int exponent) noexcept {
+    if (exponent < powers_of_10_count)
+        return POWERS_OF_10[static_cast<std::size_t>(exponent)];
+
+    long double value = POWERS_OF_10[powers_of_10_count - 1];
+    for (int i = powers_of_10_count - 1; i < exponent; ++i)
         value *= 10.0L;
 
+    return value;
+}
+
+CLASSIFY_SCALAR_FORCE_INLINE long double pow10_integer(const int exponent) noexcept {
+    const int abs_exponent = exponent >= 0 ? exponent : -exponent;
+    const long double value = pow10_positive_integer(abs_exponent);
     return exponent >= 0 ? value : 1.0L / value;
 }
 
@@ -1031,7 +1078,7 @@ CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_exponent(
         return floating_parse_status::invalid;
 
     bool exponent_negative = false;
-    const parse_state::Sign exponent_sign = parse_sign(static_cast<unsigned char>(*current));
+    const parse_state::Sign exponent_sign = parsing::parse_sign(static_cast<unsigned char>(*current));
     if (exponent_sign != parse_state::no_sign) {
         exponent_negative = exponent_sign == parse_state::negative_sign;
         ++current;
@@ -1073,6 +1120,11 @@ CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_ascii(
     unsigned places_after_decimal = 0;
     int exponent = 0;
     bool has_digit = false;
+
+    // Keep this split integral/fractional accumulation shape. A simpler
+    // mantissa * pow10(exponent) implementation is mathematically equivalent,
+    // but it can round to the neighboring double for user-visible CHECK_EQ
+    // cases that legacy csv-parser data_type() handled exactly.
 
     while (current != last && ascii_digits[static_cast<unsigned char>(*current)]) {
         const unsigned char digit = static_cast<unsigned char>(*current - '0');
@@ -1217,14 +1269,6 @@ CLASSIFY_SCALAR_FORCE_INLINE bool floating_is_integral(const double value, std::
     return true;
 }
 
-template<typename Output>
-CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_integer(
-    const std::int64_t parsed_integer,
-    Output& output) noexcept {
-    output.template set<scalar_int64>(parsed_integer);
-    return integer::classify_integer_kind(parsed_integer);
-}
-
 CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     std::true_type,
     const double parsed_float,
@@ -1243,7 +1287,7 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     Output& output) noexcept {
     std::int64_t parsed_integer = 0;
     if (floating_is_integral(parsed_float, &parsed_integer))
-        return finish_integer(parsed_integer, output);
+        return parsing::finish_integer(parsed_integer, output);
 
     output.template set<scalar_float>(parsed_float);
     return scalar_float;
@@ -1261,7 +1305,7 @@ CLASSIFY_SCALAR_FORCE_INLINE ScalarKind finish_floating(
     }
 }
 
-} // namespace parsing
+} // namespace floating
 
 template<char DecimalSymbol = '.', bool IntegralFloatingAsInteger = true>
 struct builtin_numeric_policy {
@@ -1285,11 +1329,11 @@ struct builtin_numeric_policy {
         parse_state& state,
         Output& output) const noexcept {
         double parsed_float = 0;
-        const parsing::floating_parse_status status = parsing::parse_floating<DecimalSymbol>(state, &parsed_float);
-        if (status == parsing::floating_parse_status::parsed)
-            return parsing::finish_floating<IntegralFloatingAsInteger>(parsed_float, output);
+        const floating::floating_parse_status status = floating::parse_floating<DecimalSymbol>(state, &parsed_float);
+        if (status == floating::floating_parse_status::parsed)
+            return floating::finish_floating<IntegralFloatingAsInteger>(parsed_float, output);
 
-        return status == parsing::floating_parse_status::bigfloat
+        return status == floating::floating_parse_status::bigfloat
             ? scalar_bigfloat
             : scalar_string;
     }
@@ -1520,7 +1564,7 @@ CLASSIFY_SCALAR_FORCE_INLINE bool parse_float_with_decimal(
     if (value_first == state.last)
         return false;
 
-    return parsing::parse_floating<DecimalSymbol>(state, &out) == parsing::floating_parse_status::parsed;
+    return floating::parse_floating<DecimalSymbol>(state, &out) == floating::floating_parse_status::parsed;
 }
 
 } // namespace detail

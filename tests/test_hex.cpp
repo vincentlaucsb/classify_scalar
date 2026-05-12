@@ -35,4 +35,5 @@ TEST_CASE("malformed hexadecimal values fall back to string") {
     CHECK(classify_scalar::classify_scalar("0x") == scalar_string);
     CHECK(classify_scalar::classify_scalar("0xgg") == scalar_string);
     CHECK(classify_scalar::classify_scalar("FF") == scalar_string);
+    CHECK(classify_scalar::classify_scalar("0x8000000000000000") == scalar_string);
 }

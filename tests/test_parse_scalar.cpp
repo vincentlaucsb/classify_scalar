@@ -77,6 +77,9 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     CHECK(parse_literal<classify_scalar::scalar_int64>("-42", integer));
     CHECK(integer == -42);
     CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("9223372036854775808", integer));
+    CHECK_FALSE(parse_literal<classify_scalar::scalar_int64>("3.14", integer));
+    CHECK(parse_literal<classify_scalar::scalar_float>("42", floating));
+    CHECK_FALSE(parse_literal<classify_scalar::scalar_float>("hello", floating));
 
     const char int8_max[] = "127";
     const char int8_overflow[] = "128";
@@ -102,6 +105,7 @@ TEST_CASE("explicit scalar parsers bypass classifier policy order") {
     CHECK(timestamp == 1706763598000ULL);
     CHECK(parse_literal<classify_scalar::scalar_timestamp>("2021-04-05T10:14:57-0600", timestamp));
     CHECK(timestamp == 1617639297000ULL);
+    CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("42", timestamp));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("1969-12-31T23:59:59Z", timestamp));
     CHECK_FALSE(parse_literal<classify_scalar::scalar_timestamp>("2024-13-31", timestamp));
 
@@ -127,4 +131,5 @@ TEST_CASE("explicit float parser accepts runtime decimal symbols") {
     CHECK_FALSE(parse_float_literal("3,14", floating, '.'));
     CHECK_FALSE(parse_float_literal("3.14", floating, ','));
     CHECK_FALSE(parse_float_literal("3;14", floating, ';'));
+    CHECK_FALSE(classify_scalar::parse_float(static_cast<const char*>(nullptr), static_cast<const char*>(nullptr), floating));
 }

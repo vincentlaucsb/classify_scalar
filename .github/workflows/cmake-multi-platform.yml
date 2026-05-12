@@ -95,8 +95,18 @@ jobs:
         run: ctest --test-dir build-asan-${{ matrix.cxx_standard }} --build-config RelWithDebInfo --output-on-failure
 
   codecov:
-    name: Codecov / Ubuntu / C++17
+    name: Codecov / Ubuntu / C++${{ matrix.cxx_standard }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx_standard: [11, 20]
+        include:
+          - cxx_standard: 11
+            build_catch2_tests: OFF
+          - cxx_standard: 20
+            build_catch2_tests: ON
 
     steps:
       - name: Checkout
@@ -106,36 +116,37 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}/build-codecov/_deps
-          key: cmake-deps-codecov-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+            ${{ github.workspace }}/build-codecov-${{ matrix.cxx_standard }}/_deps
+          key: cmake-deps-codecov-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
           restore-keys: |
-            cmake-deps-codecov-${{ runner.os }}-
-            cmake-deps-${{ runner.os }}-cxx17-
+            cmake-deps-codecov-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
+            cmake-deps-${{ runner.os }}-cxx${{ matrix.cxx_standard }}-
             cmake-deps-${{ runner.os }}-
 
       - name: Configure CMake
         run: >
           cmake
           -S .
-          -B build-codecov
+          -B build-codecov-${{ matrix.cxx_standard }}
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
           -DCMAKE_EXE_LINKER_FLAGS="--coverage"
           -DCLASSIFY_SCALAR_BUILD_TESTS=ON
-          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=ON
-          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=17
+          -DCLASSIFY_SCALAR_BUILD_CATCH2_TESTS=${{ matrix.build_catch2_tests }}
+          -DCLASSIFY_SCALAR_TEST_CXX_STANDARD=${{ matrix.cxx_standard }}
 
       - name: Build
-        run: cmake --build build-codecov --config Debug --parallel
+        run: cmake --build build-codecov-${{ matrix.cxx_standard }} --config Debug --parallel
 
       - name: Test
-        run: ctest --test-dir build-codecov --build-config Debug --output-on-failure
+        run: ctest --test-dir build-codecov-${{ matrix.cxx_standard }} --build-config Debug --output-on-failure
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
-          flags: unittests
+          flags: unittests,cxx${{ matrix.cxx_standard }}
           gcov_include: include/
+          gcov_ignore: tests/*
           plugins: gcov
           token: ${{ secrets.CODECOV_TOKEN }}

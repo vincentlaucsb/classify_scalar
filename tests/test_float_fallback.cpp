@@ -109,3 +109,22 @@ TEST_CASE("fallback floating parser reports big floats outside finite double ran
             floating_syntax_pack()) == scalar_bigfloat);
     }
 }
+
+TEST_CASE("fallback floating parser rejects malformed exponents") {
+    const char* literals[] = {
+        "1e",
+        "1e-",
+        "1e+",
+        "1e x",
+        "1e501",
+        "1x",
+        "."
+    };
+
+    for (const char* literal : literals) {
+        CAPTURE(literal);
+
+        double parsed = 0;
+        CHECK_FALSE(classify_scalar::parse_float(literal, literal + std::strlen(literal), parsed));
+    }
+}

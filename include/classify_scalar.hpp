@@ -90,7 +90,9 @@ SOFTWARE.
 #define CLASSIFY_SCALAR_CONST
 #endif
 
-#if defined(_MSC_VER)
+#if defined(CLASSIFY_SCALAR_DISABLE_FORCE_INLINE)
+#define CLASSIFY_SCALAR_FORCE_INLINE inline
+#elif defined(_MSC_VER)
 #define CLASSIFY_SCALAR_FORCE_INLINE __forceinline
 #elif defined(__clang__) || defined(__GNUC__)
 #define CLASSIFY_SCALAR_FORCE_INLINE inline __attribute__((__always_inline__))
@@ -686,9 +688,9 @@ CLASSIFY_SCALAR_FORCE_INLINE const char* apply_leading_sign(parse_state& state) 
     const parse_state::Sign sign = parse_sign(first_char);
     if (sign != parse_state::no_sign) {
         state.sign = sign;
-        state.numeric_first = state.sign == parse_state::negative_sign
-            ? state.first
-            : state.first + 1;
+        // Keep '-' visible to floating parsers, but skip '+' because from_chars
+        // implementations commonly reject a leading plus for floating input.
+        state.numeric_first = state.first + (sign == parse_state::positive_sign ? 1 : 0);
         return state.first + 1;
     }
 
@@ -1201,6 +1203,28 @@ CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_dot(
 #endif
 }
 
+#ifdef CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
+template<char DecimalSymbol>
+CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status normalize_floating_point_separator(
+    const char* first,
+    const char* last,
+    char* buffer) noexcept {
+    std::size_t i = 0;
+    for (const char* current = first; current != last; ++current, ++i) {
+        const unsigned char c = static_cast<unsigned char>(*current);
+        if (is_ascii_space(static_cast<char>(c)))
+            return floating_parse_status::invalid;
+        if (c == '.')
+            return floating_parse_status::invalid;
+
+        buffer[i] = c == static_cast<unsigned char>(DecimalSymbol) ? '.' : static_cast<char>(c);
+    }
+
+    buffer[static_cast<std::size_t>(last - first)] = '\0';
+    return floating_parse_status::parsed;
+}
+#endif
+
 template<char DecimalSymbol>
 CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_with_decimal(
     const parse_state& state,
@@ -1214,17 +1238,10 @@ CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_with_decimal(
 
 #ifdef CLASSIFY_SCALAR_HAS_STD_FLOAT_FROM_CHARS
     char buffer[4097];
-    std::size_t i = 0;
-    for (const char* current = first; current != last; ++current, ++i) {
-        const unsigned char c = static_cast<unsigned char>(*current);
-        if (is_ascii_space(static_cast<char>(c)))
-            return floating_parse_status::invalid;
-        if (DecimalSymbol != '.' && c == '.')
-            return floating_parse_status::invalid;
-
-        buffer[i] = c == static_cast<unsigned char>(DecimalSymbol) ? '.' : static_cast<char>(c);
-    }
-    buffer[size] = '\0';
+    const floating_parse_status normalize_status =
+        normalize_floating_point_separator<DecimalSymbol>(first, last, buffer);
+    if (normalize_status != floating_parse_status::parsed)
+        return normalize_status;
 
     double parsed = 0;
     const std::from_chars_result result = std::from_chars(buffer, buffer + size, parsed);
@@ -1245,12 +1262,28 @@ CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating_with_decimal(
 }
 
 template<char DecimalSymbol>
+struct floating_parser {
+    CLASSIFY_SCALAR_FORCE_INLINE static floating_parse_status parse(
+        const parse_state& state,
+        double* out) noexcept {
+        return parse_floating_with_decimal<DecimalSymbol>(state, out);
+    }
+};
+
+template<>
+struct floating_parser<'.'> {
+    CLASSIFY_SCALAR_FORCE_INLINE static floating_parse_status parse(
+        const parse_state& state,
+        double* out) noexcept {
+        return parse_floating_dot(state, out);
+    }
+};
+
+template<char DecimalSymbol>
 CLASSIFY_SCALAR_FORCE_INLINE floating_parse_status parse_floating(
     const parse_state& state,
     double* out) noexcept {
-    return DecimalSymbol == '.'
-        ? parse_floating_dot(state, out)
-        : parse_floating_with_decimal<DecimalSymbol>(state, out);
+    return floating_parser<DecimalSymbol>::parse(state, out);
 }
 
 CLASSIFY_SCALAR_FORCE_INLINE bool floating_is_integral(const double value, std::int64_t* out) noexcept {

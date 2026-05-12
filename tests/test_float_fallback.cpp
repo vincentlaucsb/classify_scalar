@@ -77,6 +77,7 @@ TEST_CASE("fallback floating parser matches reference conversion for dense decim
         bool boolean = false;
         CHECK(classify_scalar::classify_scalar(
             literal,
+            literal + std::strlen(literal),
             classify_scalar::output_refs(number, integer, boolean),
             floating_syntax_pack()) == scalar_float);
         CHECK(static_cast<double>(number) == expected);
@@ -103,6 +104,7 @@ TEST_CASE("fallback floating parser reports big floats outside finite double ran
         bool boolean = false;
         CHECK(classify_scalar::classify_scalar(
             literal,
+            literal + std::strlen(literal),
             classify_scalar::output_refs(number, integer, boolean),
             floating_syntax_pack()) == scalar_bigfloat);
     }

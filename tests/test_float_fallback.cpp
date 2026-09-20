@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <cstring>
 
-#if (defined(_MSVC_LANG) ? _MSVC_LANG : __cplusplus) >= 201703L && !defined(_LIBCPP_VERSION)
+#if (defined(_MSVC_LANG) ? _MSVC_LANG : __cplusplus) >= 201703L \
+    && ((defined(CLASSIFY_SCALAR_USE_STD_FLOAT_FROM_CHARS) && CLASSIFY_SCALAR_USE_STD_FLOAT_FROM_CHARS) \
+        || (!defined(CLASSIFY_SCALAR_USE_STD_FLOAT_FROM_CHARS) && defined(__cpp_lib_to_chars)))
 #include <charconv>
 #include <system_error>
 #define CLASSIFY_SCALAR_TEST_HAS_FLOAT_FROM_CHARS_REFERENCE

@@ -302,6 +302,34 @@ C++17 and newer builds use `std::from_chars` for floating point parsing when the
 standard library provides those overloads. C++11, C++14, and standard libraries
 without floating `from_chars` use the bundled fallback parser.
 
+The CMake target probes floating-point `std::from_chars` by compiling and
+linking a C++17 call. Other build systems can define
+`CLASSIFY_SCALAR_USE_STD_FLOAT_FROM_CHARS=1` or `=0` from their own capability
+probe. Without an override, the header uses `__cpp_lib_to_chars >= 201611L`.
+Early GCC 11 libraries without this feature macro use the fallback in standalone
+header mode unless the build supplies a positive probe result. Defining
+`CLASSIFY_SCALAR_DISABLE_STD_FLOAT_FROM_CHARS` always takes precedence.
+
+### Maintaining vendored releases
+
+Make fixes in this repository before copying the public header downstream.
+Run `python tools/version.py --patch` to bump the banner, macros, duplicate-copy
+guard, CMake version, and version tests together. CI runs `python tools/version.py`
+to reject inconsistent metadata. After review and tests, downstream repositories
+should copy `include/classify_scalar.hpp` unchanged from the approved commit or
+release tag and record that commit and its checksum. A version bump does not
+create a Git tag or publish a release.
+
+To publish, label the PR **release** before merging it into `main`. Write the
+desired release notes in the PR description. After both the platform test
+workflow and the GCC compatibility workflow pass on the exact merge commit,
+the release workflow creates `v<version>` and a GitHub Release whose description
+is the PR body verbatim. It uses the repository's built-in token; no release
+secret is needed. Reruns leave an existing release alone and refuse to move a
+tag to a different commit. If the label is added after CI completed, rerun one
+of those successful workflows to reevaluate publication. Releases are not
+created from unmerged PRs or from PR test runs.
+
 The header defines `CLASSIFY_SCALAR_VERSION_MAJOR`,
 `CLASSIFY_SCALAR_VERSION_MINOR`, `CLASSIFY_SCALAR_VERSION_PATCH`, and numeric
 `CLASSIFY_SCALAR_VERSION` macros. If multiple vendored copies are included in

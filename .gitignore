@@ -35,3 +35,6 @@
 out/
 .vs/
 build/
+# Python maintenance tools
+__pycache__/
+*.pyc

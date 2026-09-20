@@ -1,0 +1,32 @@
+name: Publish labeled release
+on:
+  workflow_run:
+    workflows: [CMake on multiple platforms, GCC floating charconv compatibility]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+concurrency:
+  group: release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+jobs:
+  release:
+    # Never publish from a PR run or a fork; only tested commits on main.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Check release metadata
+        run: python3 tools/version.py
+      - name: Publish merged release PR after both CI workflows pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/publish_release.py

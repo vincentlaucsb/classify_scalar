@@ -1,0 +1,42 @@
+name: GCC floating charconv compatibility
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gcc:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [gcc:8.5.0, gcc:9.5.0-bullseye, gcc:10.5.0-bullseye, gcc:11.1.0-bullseye]
+    env:
+      GCC_IMAGE: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release metadata
+        run: |
+          python3 tools/version.py
+          python3 -m unittest discover -s tests -p test_release_automation.py
+      - name: Prepare portable CMake
+        run: |
+          mkdir -p "$RUNNER_TEMP/cmake"
+          curl --fail --location --retry 3 \
+            https://cmake.org/files/v3.31/cmake-3.31.6-linux-x86_64.tar.gz \
+            --output "$RUNNER_TEMP/cmake.tar.gz"
+          echo "5a1133ff103c71eb5120e2cc3de922733e7d8a26a98ae716397e8676adb367bf  $RUNNER_TEMP/cmake.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP/cmake" --strip-components=1
+      - name: Test probed, standalone, negative, and opt-out configurations
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/src" -v "$RUNNER_TEMP/cmake:/cmake:ro" \
+            -w /src "$GCC_IMAGE" bash -euc '
+              g++ --version
+              /cmake/bin/cmake -S tests/compatibility -B build/compat -DCMAKE_BUILD_TYPE=Release
+              /cmake/bin/cmake --build build/compat --parallel 2
+              /cmake/bin/ctest --test-dir build/compat --output-on-failure
+            '

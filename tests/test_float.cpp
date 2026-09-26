@@ -4,10 +4,13 @@
 #include <classify_scalar.hpp>
 
 #include <cstdint>
+#include <cmath>
+#include <limits>
 
 using classify_scalar::scalar_float;
 using classify_scalar::scalar_int8;
 using classify_scalar::scalar_int16;
+using classify_scalar::scalar_int64;
 using classify_scalar::scalar_string;
 
 TEST_CASE("classifies decimal floats") {
@@ -110,4 +113,27 @@ TEST_CASE("numeric policy can preserve floating syntax as float") {
         classify_scalar::output_refs(number, integer, boolean),
         floating_syntax_pack()) == scalar_float);
     CHECK(static_cast<double>(number) == Catch::Approx(-125.0));
+}
+
+TEST_CASE("integral floating values stay within signed 64-bit range") {
+    std::int64_t integer = 0;
+    long double number = 0;
+    bool boolean = false;
+    classify_scalar::builtin_output_refs output(number, integer, boolean);
+
+    CHECK(classify_scalar::classify_scalar("9223372036854775808.0", output) == scalar_float);
+    CHECK(classify_scalar::classify_scalar("9223372036854774784.0", output) == scalar_int64);
+    CHECK(integer == 9223372036854774784LL);
+    CHECK(classify_scalar::classify_scalar("-9223372036854775808.0", output) == scalar_int64);
+    CHECK(integer == std::numeric_limits<std::int64_t>::min());
+    CHECK(classify_scalar::classify_scalar("-9223372036854777856.0", output) == scalar_float);
+
+    const double upper = static_cast<double>(std::numeric_limits<std::int64_t>::max());
+    const double lower = static_cast<double>(std::numeric_limits<std::int64_t>::min());
+    CHECK_FALSE(classify_scalar::detail::floating::floating_is_integral(upper, &integer));
+    CHECK_FALSE(classify_scalar::detail::floating::floating_is_integral(
+        std::nextafter(lower, -std::numeric_limits<double>::infinity()), &integer));
+    CHECK(classify_scalar::detail::floating::floating_is_integral(std::nextafter(upper, 0.0), &integer));
+    CHECK(classify_scalar::detail::floating::floating_is_integral(lower, &integer));
+    CHECK(integer == std::numeric_limits<std::int64_t>::min());
 }

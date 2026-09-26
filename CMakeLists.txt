@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(classify_scalar
-    VERSION 1.1.1
+    VERSION 1.1.2
     DESCRIPTION "Header-only scalar classification for C++"
     LANGUAGES CXX)
 

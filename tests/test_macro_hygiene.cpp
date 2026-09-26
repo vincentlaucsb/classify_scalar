@@ -14,8 +14,8 @@
 
 static_assert(CLASSIFY_SCALAR_VERSION_MAJOR == 1, "unexpected classify_scalar major version");
 static_assert(CLASSIFY_SCALAR_VERSION_MINOR == 1, "unexpected classify_scalar minor version");
-static_assert(CLASSIFY_SCALAR_VERSION_PATCH == 1, "unexpected classify_scalar patch version");
-static_assert(CLASSIFY_SCALAR_VERSION == 10101, "unexpected classify_scalar version number");
+static_assert(CLASSIFY_SCALAR_VERSION_PATCH == 2, "unexpected classify_scalar patch version");
+static_assert(CLASSIFY_SCALAR_VERSION == 10102, "unexpected classify_scalar version number");
 
 TEST_CASE("classify_scalar compatibility macros do not claim generic host names") {
     CHECK(CLASSIFY_SCALAR_TEST_STRINGIFY(CONSTEXPR_14) == std::string("host_constexpr_14"));
